@@ -12,6 +12,9 @@ context-free fragment that moves an emergency into a routine queue. In Relay, mo
 providers propose or transport. Backend code decides state transitions, executes side effects
 and reports only what PostgreSQL confirms.
 
+Currently implemented: browser microphone → LiveKit → streaming STT → Relay → text response.
+Speech output (TTS) and barge-in are the next stages.
+
 ## Architecture
 
 ```mermaid

@@ -45,7 +45,7 @@ this design; sections that describe target behavior say so.
 
 | Module/path | Owns | Boundary |
 | --- | --- | --- |
-| `backend/app/main.py` | Application factory and composition root. | Phase 1 wires infrastructure only; lifecycle and settings live in `core/`. |
+| `backend/app/main.py` | Application factory and composition root. | The `core/lifecycle.py` lifespan wires the database, providers, orchestrator and realtime manager; settings live in `core/`. |
 | `api/` | HTTP health/readiness, internal demo session and turn endpoints, voice token endpoint, request boundary validation. | No business policy, provider SDK calls, or direct business writes. |
 | `realtime/` | Ephemeral sessions, connection ownership, tracked tasks, turn submission, cancellation, ordered typed events and bounded queues. Playback remains future work. | Invokes TurnOrchestrator; no routing/workflow/tool logic or business-state duplication. |
 | `property/` | Property resolution, residents, units, contact context, enabled services, configuration, and property knowledge. | Returns a property-scoped context; rejects cross-property references and exposes unresolved fields explicitly. |
@@ -56,8 +56,8 @@ this design; sections that describe target behavior say so.
 | `providers/` | Normalized provider interfaces and adapter composition. | Vendor formats, SDKs, and provider errors do not leak into business modules. |
 | `providers/stt/` | Audio-to-transcript streams and partial/final/error normalization. | Partial text is not a durable command or authorization for a write. |
 | `providers/tts/` | Reserved, empty. Planned: text-to-audio streams, cancellation, and stream completion/failure. | Audio generation completion is distinct from browser playback completion. |
-| `providers/llm/` | Streaming model output, structured proposals, cancellation, and normalized errors. | No provider-managed execution of backend tools. |
-| `providers/embeddings/` | Optional future embedding abstraction. | Reserved; no embedding provider or retrieval system is required by V1. |
+| `providers/llm/` | One-shot structured model calls (routing proposals, pending-reply interpretation, optional phrasing choice) with timeouts and normalized errors. No streaming. | No provider-managed execution of backend tools. |
+| `providers/embeddings/` | Reserved, empty. A possible future embedding abstraction. | Reserved; no embedding provider or retrieval system is required by V1. |
 | `db/` | Async sessions, property/workflow/operational models, repository and local operations adapters, audit transactions and seeds; migrations in `backend/migrations/`. | Implements storage and authorized local mutations behind tool protocols; no routing or model interpretation. |
 | `metrics/` | Reserved, empty. Timing and outcome diagnostics are currently structured log fields. | Telemetry is not the authoritative business ledger. |
 | `core/` | Configuration, logging conventions, common types and errors. | Small shared primitives; no hidden service orchestration. |
@@ -69,23 +69,23 @@ this design; sections that describe target behavior say so.
 
 ## Orchestration and dependency boundaries
 
-The composition root will wire interfaces to adapters and repositories. API and realtime modules receive browser input, supervise tasks, and coordinate a turn. Property resolution gates the router. The router proposes an eligible service; the workflow layer checks transitions and required context. The agent assists with reasoning and wording and can propose a tool. Workflow policy authorizes the operation, the tool validates its input and target context, and repositories or the mock PMS execute it. The tool's committed result updates workflow/conversation state before response generation reports success.
+The composition root wires interfaces to adapters and repositories. API and realtime modules receive browser input, supervise tasks, and submit turns to TurnOrchestrator. Property resolution gates the router. The router proposes an eligible service; the workflow layer checks transitions and required context and declares any ActionRequest. Workflow policy authorizes the operation, the tool validates its input and target context, and the local operations adapter executes it. The tool's verified committed result updates workflow/conversation state before the response reports success.
 
-Provider dependencies will flow through abstractions: STT/TTS are used by realtime, LLM by agent reasoning, and embeddings only by a justified consumer. Routing may request reasoning through `agent/` with only its eligible catalog. Business modules do not import vendor SDKs. Phase 2 places the ORM-free repository protocol with its consumer in `property/`, implemented by `db/repository.py`. Persistence imports domain values but never invokes context orchestration. Phase 4 workflows and Phase 5 tools likewise own explicit ORM-free protocols implemented by database adapters.
+Provider dependencies flow through abstractions: STT is used by realtime speech, and the model provider by routing (with only the eligible catalog) and by the agent layer for reply interpretation and optional phrasing. TTS is planned for realtime presentation; embeddings have no consumer. Business modules do not import vendor SDKs. Phase 2 places the ORM-free repository protocol with its consumer in `property/`, implemented by `db/repository.py`. Persistence imports domain values but never invokes context orchestration. Phase 4 workflows and Phase 5 tools likewise own explicit ORM-free protocols implemented by database adapters.
 
 Realtime owns scheduling and cancellation, workflows own business decisions, tools own external/business mutations, and repositories own storage mechanics. Conversational interpretation cannot bypass this chain.
 
 ## Property context gate
 
-The future demo can resolve a property from explicit browser/session selection or another configured caller association. Caller identity is context, not proof of identity. A resident/contact lookup must remain within the selected property. A prospect may have no resident or unit record, represented explicitly; workflows requiring a unit must clarify before writing.
+The demo resolves the property from the seeded resident chosen at session creation; the session's identity is persisted and cannot silently change. Caller identity is context, not proof of identity. A resident/contact lookup must remain within the selected property. A prospect may have no resident or unit record, represented explicitly; workflows requiring a unit must clarify before writing. Prospect onboarding is not implemented.
 
-A context snapshot includes property reference, resident/contact and unit resolution status, enabled property-service records, relevant configuration/knowledge, and configuration version. Missing or conflicting property information prevents routing. A confirmed context change reloads the catalog and invalidates stale route proposals. Existing incidents keep their original property; they are never reassigned automatically.
+A context snapshot includes the property, resident and unit resolution status, and enabled property-service records with their configuration and active scenarios. It carries a diagnostic catalog fingerprint, not a durable configuration version. Missing property information prevents routing. Existing incidents keep their original property; they are never reassigned automatically.
 
-The session uses a versioned context snapshot. Before any write, the backend revalidates resource ownership and current service enablement. A disabled service or stale configuration forces context refresh and a new workflow decision rather than silent execution under an old route.
+Each turn loads a fresh context. Before any write, the tool boundary revalidates resource ownership and current service enablement, so a service disabled after the route was chosen is not executed under the old route.
 
 ## Data-driven routing cascade
 
-See [ADR 006](decisions/006-routing-cascade.md). Phase 3 implements this sequence for independent utterances. Phase 4 validates the result and applies explicit downstream workflow transitions; it does not replace the router or add a continuation classifier:
+See [ADR 006](decisions/006-routing-cascade.md). Phase 3 implements this sequence for independent utterances. Phase 4 validates the result and applies explicit downstream workflow transitions; it does not replace the router. Phase 8.1 adds pending-reply interpretation in the agent layer, before routing validation ([ADR 008](decisions/008-pending-reply-interpretation.md)):
 
 1. Gate on resolved property and a nonempty, validated enabled catalog.
 2. Consider explicit service requests, configured scenario cues, and workflow continuation/transition rules within that catalog.
@@ -93,13 +93,13 @@ See [ADR 006](decisions/006-routing-cascade.md). Phase 3 implements this sequenc
 4. Validate the proposed service against the catalog and workflow transition policy. Confidence is evidence for a decision, not permission for an action.
 5. Clarify ambiguity or offer an enabled Human Handoff path. An unavailable service must be explained, never fabricated. If no valid service or handoff is available, communicate the limitation and end or use an independently configured contact fallback.
 
-Phase 3 uses unique normalized whole-utterance configured matches, with overlap falling through to constrained interpretation. It uses no confidence probability and zero automatic model retries, with a default ten-second fallback deadline. Each outcome records its catalog fingerprint, reason and source. Semantic matching optimizations and calibration remain open. High-priority hazard cues will feed future configured workflow escalation; the model cannot invent emergency policy.
+Phase 3 uses unique normalized whole-utterance configured matches, with overlap falling through to constrained interpretation. It uses no confidence probability and zero automatic model retries, with a default ten-second fallback deadline. Each outcome records its catalog fingerprint, reason and source. Semantic matching optimizations and calibration remain open. Hazard escalation is a validated route to another enabled service followed by a workflow transition; an unfinished safety-critical workflow is never downgraded automatically. The model cannot invent emergency policy.
 
 Atlas enables separate Emergency Maintenance and Non-Emergency Maintenance services. Palm exposes Maintenance, Security, and Parking instead. Palm's Maintenance workflow may raise urgency internally; it must not route to Atlas's disabled/unavailable labels. The router code stays the same; catalog entries, scenarios, and workflow bindings differ.
 
 ## Workflow architecture
 
-A workflow run tracks its property, service, step, collected fields, business status, related resources, and committed actions. The session execution state does not substitute for workflow state. Transitions are governed by configured service bindings and backend escalation policy, not free-form model text. Only implemented, allowlisted workflow/tool capabilities may be bound by configuration in future phases.
+A workflow run tracks its property, service, step, collected fields, business status, related resources, and committed actions. The session execution state does not substitute for workflow state. Transitions are governed by configured service bindings and backend escalation policy, not free-form model text. Only implemented, allowlisted workflow/tool capabilities can be bound by configuration.
 
 For the Atlas demo (`EM-1042` is an illustrative identifier; incidents use UUIDs), a maintenance workflow transitions to Emergency Maintenance when the new leak information warrants escalation. Preserve the run's service history and related resource references. The emergency create operation records EM-1042 once. Subsequent hazard information updates EM-1042. If a non-emergency request already exists in a later implementation, link its escalation to the incident rather than losing or duplicating the earlier record.
 
@@ -107,7 +107,7 @@ Human handoff is a structured tool action. It snapshots property, resident/conta
 
 ## Provider abstractions
 
-Future interfaces must describe start/stream/finish/cancel behavior where applicable, normalized timeouts/errors, correlation IDs, and capability differences. STT emits partial/final transcripts; TTS emits audio chunks; LLM emits tokens and structured proposals; optional embeddings return vectors behind a versioned contract. Adapter tests will check cancellation and completion races. Provider selection, SDKs, exact method signatures, and audio transport are intentionally undecided.
+Implemented protocols: `StreamingSTTProvider` (open, send audio, receive partial/final/error events, update context, close), `MediaAudioSource` for LiveKit input, and one-shot structured model protocols (`RoutingModelProvider`, `TurnInterpretationProvider`, `PhrasingProvider`) with timeouts and normalized errors. Model calls do not stream tokens. Adapter tests cover malformed output, refusals, timeouts and stream cleanup. Planned: a streaming TTS protocol emitting audio chunks with explicit completion and cancellation. Embeddings remain unspecified.
 
 ## Application state versus realtime execution state
 
@@ -133,11 +133,11 @@ Write tools need stable operation identities scoped to the property and business
 
 For EM-1042, the tool commit survives cancellation of speech about its creation. The next finalized hazard utterance requests an update referencing EM-1042. The handoff subsequently references that same committed incident and confirmed update.
 
-## Observability and future verification
+## Observability and verification
 
-[Events](event-model.md) correlate sessions, turns, workflow runs, tool operations, and context versions. Measure routing results/fallbacks, speech-to-response latency, model first-token latency, TTS first-audio latency, tool duration, and cancellation delay. Durable tool outcomes are authoritative if telemetry emission fails. Explicit failure events and normalized errors support diagnosis without logging raw audio or unrestricted resident information by default.
+Structured logs correlate sessions, turns, workflow runs and tool operations, with per-stage turn timings (context, routing, workflow, tools, rendering), routing outcomes and STT stream diagnostics. Speech-to-response and TTS first-audio latency are planned measurements; model calls are one-shot, so there is no first-token latency. Durable tool outcomes are authoritative if telemetry emission fails. Explicit failure events and normalized errors support diagnosis without logging raw audio or unrestricted resident information by default.
 
-Future verification must exercise both property taxonomies with the same router, unresolved context, disabled/stale service selection, escalation, barge-in before/during/after a tool commit, late provider output, duplicate creates, uncertain commits, reconnect, and handoff truthfulness. See [failure modes](failure-modes.md). Phase 0 checks only structure, documentation coverage, and the absence of implementation.
+The Phase 0 verification plan required exercising both property taxonomies with the same router, unresolved context, disabled/stale service selection, escalation, barge-in before/during/after a tool commit, late provider output, duplicate creates, uncertain commits, reconnect, and handoff truthfulness. Phases 1–8.1 cover these except barge-in around a tool commit, which needs audio output. See [failure modes](failure-modes.md) and [verification records](verification/README.md).
 
 ## Phase 1 frozen foundation
 
