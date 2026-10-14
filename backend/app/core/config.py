@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     stt_sample_rate: int = Field(default=16000, ge=8000, le=48000)
     stt_min_turn_silence: int = Field(default=128, ge=50, le=10000)
     stt_max_turn_silence: int = Field(default=1280, ge=50, le=10000)
+    # Speech output (Phase 9). Disabled by default; nothing below is read while disabled.
+    tts_enabled: bool = False
+    elevenlabs_api_key: SecretStr | None = None
+    tts_voice_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9]{1,64}$")
+    tts_model: Literal["eleven_flash_v2_5"] = "eleven_flash_v2_5"
 
     @field_validator("livekit_url")
     @classmethod
@@ -97,7 +102,11 @@ class Settings(BaseSettings):
         return value
 
     @field_validator(
-        "routing_model_api_key", "assemblyai_api_key", "livekit_api_key", "livekit_api_secret"
+        "routing_model_api_key",
+        "assemblyai_api_key",
+        "livekit_api_key",
+        "livekit_api_secret",
+        "elevenlabs_api_key",
     )
     @classmethod
     def validate_model_key(cls, value: SecretStr | None) -> SecretStr | None:
@@ -165,6 +174,10 @@ class Settings(BaseSettings):
             )
         ):
             raise ValueError("Voice requires explicit LiveKit and AssemblyAI configuration")
+        if self.tts_enabled and not (
+            self.voice_enabled and self.elevenlabs_api_key and self.tts_voice_id
+        ):
+            raise ValueError("Speech output requires voice, an ElevenLabs key and a voice ID")
         if self.response_model_enabled and self.routing_model_base_url is None:
             raise ValueError("Response phrasing requires explicit model configuration")
         if bool(self.routing_model_base_url) != bool(self.routing_model_name):

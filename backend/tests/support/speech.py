@@ -1,9 +1,11 @@
 import asyncio
 from collections.abc import AsyncGenerator
+from typing import Literal
 from uuid import uuid4
 
 from app.providers.stt.schemas import SpeechContext, STTEvent
-from app.realtime.media.protocol import AudioFrame
+from app.providers.tts.schemas import SpeechRequest, TTSFailure
+from app.realtime.media.protocol import AudioFormat, AudioFrame
 
 
 class FakeMedia:
@@ -61,3 +63,43 @@ class FakeSTT:
                 )
             )
         )
+
+
+class FakeTTS:
+    """Deterministic StreamingTTSProvider: scripted chunks, failures and gates."""
+
+    def __init__(
+        self,
+        chunks: list[bytes] | None = None,
+        *,
+        fail_after: int | None = None,
+        sample_rate: int = 24000,
+        gate: asyncio.Event | None = None,
+    ) -> None:
+        self.format = AudioFormat(sample_rate=sample_rate)
+        self.chunks = list(chunks or [])
+        self.fail_after = fail_after  # 0 fails before the first chunk.
+        self.gate = gate  # Awaited before every chunk when set.
+        self.requests: list[SpeechRequest] = []
+        self.yielded = 0
+        self.outcomes: list[Literal["COMPLETED", "FAILED", "CLOSED"]] = []
+
+    async def synthesize(self, request: SpeechRequest) -> AsyncGenerator[bytes, None]:
+        self.requests.append(request)
+        try:
+            for index, chunk in enumerate(self.chunks):
+                if self.fail_after == index:
+                    raise TTSFailure("UNAVAILABLE")
+                if self.gate is not None:
+                    await self.gate.wait()
+                self.yielded += 1
+                yield chunk
+            if self.fail_after is not None and self.fail_after >= len(self.chunks):
+                raise TTSFailure("UNAVAILABLE")
+        except TTSFailure:
+            self.outcomes.append("FAILED")
+            raise
+        except (GeneratorExit, asyncio.CancelledError):
+            self.outcomes.append("CLOSED")
+            raise
+        self.outcomes.append("COMPLETED")
