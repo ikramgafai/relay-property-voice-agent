@@ -301,7 +301,11 @@ def test_tts_dependency_boundaries_and_no_runtime_wiring() -> None:
     for file in (root / "providers" / "tts").glob("*.py"):
         app_imports = {m for m in imports(file) if m.startswith("app.")}
         assert app_imports <= allowed | {"app.providers.tts.schemas"}, file.name
-        assert not any(m.startswith(("livekit", "httpx", "elevenlabs")) for m in imports(file))
+        # The neutral contract is transport-free; only the concrete adapter may use httpx.
+        transport = (
+            ("livekit", "elevenlabs") if file.name == "elevenlabs.py" else ("livekit", "httpx")
+        )
+        assert not any(m.startswith(transport) for m in imports(file)), file.name
     assert {m for m in imports(root / "realtime/media/pcm.py") if m.startswith("app.")} == {
         "app.realtime.media.protocol"
     }
