@@ -1,0 +1,66 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Voice recordings: personal audio never enters the repository
+*.wav
+*.m4a
+*.mp3
+*.ogg
+*.flac
+*.webm
+
+# Live provider evaluation reports (offline.json is deterministic and tracked)
+evaluations/results/live*.json
+evaluations/results/*-live*.json
+
+# Local infrastructure overrides
+docker-compose.override.yml
+compose.override.yml
+
+# Internal working notes
+CURSOR_CONTEXT.md
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Project-local uv cache and managed Python
+.uv-cache/
+.python/
+.tools/
+
+# Frontend/build artifacts
+node_modules/
+dist/
+build/
+coverage/
+
+# Local runtime data and logs
+*.log
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+
+# Editor, agent and OS files
+.idea/
+.vscode/
+.claude/
+.cursor/
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,8 @@
+case_id	language	expected_text	fixture_status
+short_yes	en	Yes, please.	AUDIO_NOT_PROVIDED
+unit_number	en	Unit two hundred four.	AUDIO_NOT_PROVIDED
+property	en	Atlas Residence.	AUDIO_NOT_PROVIDED
+maintenance	en	My AC isn't cooling.	AUDIO_NOT_PROVIDED
+emergency	en	Water is getting close to an electrical outlet.	AUDIO_NOT_PROVIDED
+short_french	fr	Oui, s'il vous plaît.	AUDIO_NOT_PROVIDED
+short_arabic	ar	نعم، من فضلك.	AUDIO_NOT_PROVIDED

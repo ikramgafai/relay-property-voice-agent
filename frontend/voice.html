@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relay · Speech input demo</title>
+<style>
+body{font:17px system-ui;max-width:800px;margin:48px auto;padding:0 24px;background:#f6f7f8;color:#182b32}
+label{display:block;margin:16px 0}input,button{font:inherit;padding:10px}input{width:95%}
+button{cursor:pointer;margin:8px 8px 8px 0}pre{white-space:pre-wrap;background:white;padding:20px;border-radius:8px}
+</style>
+<h1>Relay · Speech input</h1>
+<p>Internal demo. Your microphone is sent to LiveKit and AssemblyAI. Relay replies in text.</p>
+<label>Relay backend <input id="base" value="http://127.0.0.1:8000"></label>
+<label>Existing conversation session UUID <input id="session" autocomplete="off"></label>
+<button id="start">Connect microphone</button><button id="stop" disabled>Disconnect</button>
+<p id="status" role="status">Disconnected</p><p id="partial"></p>
+<pre id="output" aria-live="polite"></pre>
+<script type="module">
+import {Room, RoomEvent} from 'https://cdn.jsdelivr.net/npm/livekit-client@2.22.4/+esm';
+const byId = id => document.getElementById(id);
+let socket, room, sequence = 0, currentSession;
+function event(kind) {
+  socket.send(JSON.stringify({session_id:currentSession,sequence:++sequence,event_type:kind,payload:{kind}}));
+}
+async function stop() {
+  const oldRoom = room; room = undefined;
+  if(oldRoom) await oldRoom.disconnect();
+  const oldSocket = socket; socket = undefined;
+  if(oldSocket) oldSocket.close();
+  byId('start').disabled=false;byId('stop').disabled=true;byId('status').textContent='Disconnected';
+}
+byId('stop').onclick=stop;
+byId('start').onclick=async () => {
+  byId('start').disabled=true;byId('stop').disabled=false;
+  const base=byId('base').value.replace(/\/$/,'');currentSession=byId('session').value.trim();
+  sequence=0;
+  try {
+    socket=new WebSocket(base.replace(/^http/,'ws')+'/api/realtime/'+encodeURIComponent(currentSession));
+    await new Promise((resolve,reject)=>{socket.onopen=resolve;socket.onerror=reject;});
+    const started=new Promise((resolve,reject)=>{
+      socket.onmessage=message=>{
+        const e=JSON.parse(message.data), p=e.payload;
+        if(e.event_type==='SESSION_STARTED') resolve();
+        if(e.event_type==='ERROR') {byId('status').textContent=p.code;reject(new Error(p.code));}
+        if(e.event_type==='STT_PARTIAL') byId('partial').textContent=p.transcript;
+        if(e.event_type==='STT_FINAL') {byId('partial').textContent='';byId('output').textContent+='You: '+p.transcript+'\n';}
+        if(e.event_type==='AGENT_RESPONSE') byId('output').textContent+='Relay: '+p.response_text+'\n\n';
+        if(e.event_type==='STT_FAILED') {void stop().then(()=>byId('status').textContent=p.message);}
+      };
+      socket.onclose=()=>{reject(new Error('Control connection closed'));void stop();};
+    });
+    event('SESSION_START');await started;
+    const response=await fetch(base+'/api/voice/'+encodeURIComponent(currentSession)+'/token',{
+      method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(!response.ok) throw new Error('Voice admission failed: '+response.status);
+    const admission=await response.json();
+    room=new Room();room.on(RoomEvent.Disconnected,()=>void stop());
+    await room.connect(admission.livekit_url,admission.participant_token);
+    await room.localParticipant.setMicrophoneEnabled(true);
+    byId('status').textContent='Microphone connected — responses appear below';
+  } catch(error) {await stop();byId('status').textContent=error.message || 'Connection failed';}
+};
+window.addEventListener('pagehide',()=>{if(room) void room.disconnect();if(socket) socket.close();});
+</script>
+</html>

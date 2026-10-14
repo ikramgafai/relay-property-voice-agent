@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: uv run --locked ruff check .
+      - run: uv run --locked ruff format --check .
+      - run: uv run --locked mypy
+
+  tests:
+    # Same isolated suite used for every phase verification: PostgreSQL 17 (tmpfs),
+    # a LiveKit server and the Dockerfile test stage, with no published ports.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f compose.test.yml up --build --abort-on-container-exit --exit-code-from tests
+      - if: always()
+        run: docker compose -f compose.test.yml down

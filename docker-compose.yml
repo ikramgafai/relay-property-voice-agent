@@ -1,0 +1,42 @@
+# Local development only; all credentials below are deliberate placeholders.
+services:
+  backend:
+    build: .
+    environment:
+      APP_NAME: Relay
+      APP_ENV: development
+      DEBUG: "false"
+      LOG_LEVEL: INFO
+      HOST: 0.0.0.0
+      PORT: "8000"
+      DATABASE_URL: postgresql+asyncpg://relay:relay_dev_only@postgres:5432/relay
+      CORS_ORIGINS: '["http://localhost:5173"]'
+      CORS_ALLOW_CREDENTIALS: "false"
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+  postgres:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_USER: relay
+      POSTGRES_PASSWORD: relay_dev_only
+      POSTGRES_DB: relay
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relay -d relay"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  postgres_data:
