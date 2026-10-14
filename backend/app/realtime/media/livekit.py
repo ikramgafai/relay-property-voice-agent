@@ -1,6 +1,7 @@
 """LiveKit is audio transport only. Room and participant are backend-generated."""
 
 import asyncio
+from collections import deque
 from collections.abc import AsyncGenerator, Callable
 from datetime import timedelta
 from uuid import UUID
@@ -8,7 +9,7 @@ from uuid import UUID
 from livekit import api, rtc
 
 from app.core.config import Settings
-from app.realtime.media.protocol import AudioFormat, AudioFrame
+from app.realtime.media.protocol import AudioFormat, AudioFrame, MediaSinkClosed
 
 
 def room_name(session_id: UUID) -> str:
@@ -23,15 +24,23 @@ def server_name(session_id: UUID) -> str:
     return f"relay-server-{session_id}"
 
 
+AGENT_TRACK = "relay-agent-audio"
+OUTPUT_FORMAT = AudioFormat(sample_rate=24000)
+OUTPUT_QUEUE_MS = 200  # native LiveKit buffer ahead of WebRTC; Python buffers 500 ms more
+
+
 def token(settings: Settings, session_id: UUID, *, backend: bool = False) -> str:
+    """Caller: publishes its microphone, subscribes to agent audio. Backend: subscribes to the
+    caller microphone, publishes the agent audio track. LiveKit's audio publish source is
+    "microphone" for both; neither may publish data, video or screen share."""
     assert settings.livekit_api_key and settings.livekit_api_secret
     grants = api.VideoGrants(
         room_join=True,
         room=room_name(session_id),
-        can_publish=not backend,
-        can_subscribe=backend,
+        can_publish=True,
+        can_subscribe=True,
         can_publish_data=False,
-        can_publish_sources=[] if backend else ["microphone"],
+        can_publish_sources=["microphone"],
     )
     identity = server_name(session_id) if backend else participant_name(session_id)
     return (
@@ -255,3 +264,117 @@ class LiveKitAudioSource:
         await self.media.close()
         self.track = None
         self.selected_sid = None
+
+
+def rtc_frame(frame: AudioFrame) -> rtc.AudioFrame:
+    """Exact PCM16 bytes, rate and channels; no resampling or re-encoding."""
+    samples = len(frame.data) // 2 // frame.format.channels
+    return rtc.AudioFrame(frame.data, frame.format.sample_rate, frame.format.channels, samples)
+
+
+class LiveKitAudioSink:
+    """Agent audio output on the shared backend participant.
+
+    Owns only its AudioSource, LocalAudioTrack and publication; never the Room. Acceptance by
+    capture() means the local LiveKit source took the frame, not that anyone received it.
+    """
+
+    def __init__(self, media: LiveKitMediaSession, format: AudioFormat = OUTPUT_FORMAT) -> None:
+        self.media, self.format = media, format
+        self.source: rtc.AudioSource | None = None
+        self.track: rtc.LocalAudioTrack | None = None
+        self.publication: rtc.LocalTrackPublication | None = None
+        self.ready = False
+        self.failed = False
+        self.closed = False
+        # A cancelled or failed capture leaves the native source busy with the in-flight
+        # frame (InvalidState until it drains), so the sink refuses further captures.
+        self.unusable = False
+        self._lock = asyncio.Lock()
+        self._current: UUID | None = None
+        self._previous: deque[UUID] = deque(maxlen=64)
+        self.media.on_end(self._media_ended)
+
+    def _media_ended(self) -> None:
+        self.ready = False
+
+    async def connect(self) -> None:
+        async with self._lock:
+            if self.ready:
+                return
+            if self.closed or self.failed or self.media.ended:
+                raise MediaSinkClosed()
+            try:
+                await self.media.ensure_connected()
+                self.source = rtc.AudioSource(
+                    self.format.sample_rate, self.format.channels, queue_size_ms=OUTPUT_QUEUE_MS
+                )
+                self.track = rtc.LocalAudioTrack.create_audio_track(AGENT_TRACK, self.source)
+                participant = self.media.room.local_participant
+                participant.set_track_subscription_permissions(
+                    allow_all_participants=False,
+                    participant_permissions=[
+                        rtc.ParticipantTrackPermission(
+                            participant_identity=participant_name(self.media.session_id),
+                            allow_all=True,
+                        )
+                    ],
+                )
+                async with asyncio.timeout(10):
+                    self.publication = await participant.publish_track(
+                        self.track,
+                        rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_MICROPHONE),
+                    )
+            except BaseException:
+                # Partial failure releases output resources only; the Room and input stay up.
+                self.failed = True
+                await self._release()
+                raise
+            self.ready = True
+
+    async def capture(self, frame: AudioFrame, speech_output_id: UUID) -> None:
+        if self.closed or self.media.ended:
+            raise MediaSinkClosed()
+        if not self.ready or self.source is None:
+            raise RuntimeError("Output transport is not connected")
+        if self.unusable:
+            raise RuntimeError("Output transport is unusable after an interrupted capture")
+        if frame.format != self.format:
+            raise ValueError("Frame format does not match the output track")
+        if speech_output_id != self._current:
+            if speech_output_id in self._previous:
+                raise ValueError("Frame belongs to an earlier speech output")
+            if self._current is not None:
+                self._previous.append(self._current)
+            self._current = speech_output_id
+        try:
+            await self.source.capture_frame(rtc_frame(frame))
+        except BaseException:
+            self.unusable = True
+            raise
+
+    async def clear(self) -> None:
+        if self.source is not None and not self.closed:
+            self.source.clear_queue()
+
+    async def close(self) -> None:
+        async with self._lock:
+            if self.closed:
+                return
+            self.closed = True
+            self.ready = False
+            await self._release()
+
+    async def _release(self) -> None:
+        source, publication = self.source, self.publication
+        self.source = self.track = self.publication = None
+        if source is not None:
+            source.clear_queue()
+        if publication is not None and self.media.connected and not self.media.ended:
+            try:
+                async with asyncio.timeout(5):
+                    await self.media.room.local_participant.unpublish_track(publication.sid)
+            except Exception:
+                pass
+        if source is not None:
+            await source.aclose()

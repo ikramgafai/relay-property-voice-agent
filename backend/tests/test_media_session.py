@@ -214,11 +214,12 @@ async def test_source_connect_registers_input_handlers_once(room: FakeRoom) -> N
     }
 
 
-def test_backend_grants_unchanged() -> None:
+def test_backend_grants_are_narrow() -> None:
     session_id = uuid4()
     claims = jwt.decode(token(settings(), session_id, backend=True), "secret", algorithms=["HS256"])
     assert claims["sub"] == server_name(session_id) == f"relay-server-{session_id}"
     video = claims["video"]
-    assert video["canSubscribe"] and not video["canPublish"] and not video["canPublishData"]
-    assert not video.get("canPublishSources")
+    # Phase 9 adds publishing of the agent audio track (microphone source only).
+    assert video["canSubscribe"] and video["canPublish"] and not video["canPublishData"]
+    assert video["canPublishSources"] == ["microphone"]
     assert not any(video.get(key) for key in ("roomAdmin", "roomCreate", "roomList", "roomRecord"))
