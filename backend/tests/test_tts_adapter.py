@@ -342,8 +342,9 @@ def test_adapter_dependency_boundary() -> None:
         "elevenlabs",
     )
     assert not any(module.startswith(forbidden) for module in modules), modules
-    for runtime in ("core/lifecycle.py", "api/voice.py", "realtime/session.py"):
-        assert "elevenlabs" not in (Path(app.__file__).parent / runtime).read_text()
+    # Step 7A: the adapter is constructed only by the composition root.
+    for runtime in ("api/voice.py", "realtime/session.py", "realtime/speech.py"):
+        assert "elevenlabs" not in (Path(app.__file__).parent / runtime).read_text().lower()
 
 
 async def test_speech_output_runs_on_the_adapter() -> None:

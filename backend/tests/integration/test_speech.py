@@ -9,7 +9,7 @@ from app.db.agent_models import AgentTurn
 from app.db.models import ConversationSession, WorkflowRun
 from app.db.operation_models import EmergencyIncident, Handoff, ToolCall
 from app.realtime.media.protocol import AudioFrame
-from app.realtime.schemas import AgentResponse, SpeechFinal
+from app.realtime.schemas import AgentAudioOutputEnded, AgentResponse, Ping, SpeechFinal
 from app.realtime.speech import SpeechPipeline
 from app.realtime.speech_context import speech_context
 from app.tools.schemas import ToolResult
@@ -23,8 +23,9 @@ from tests.integration.test_agent import TextHarness
 from tests.integration.test_agent import text_harness as text_harness  # noqa: F401
 from tests.integration.test_realtime import realtime_app as realtime_app  # noqa: F401
 from tests.integration.test_tools import harness as harness  # noqa: F401
+from tests.support.output import FakeSink
 from tests.support.realtime import Socket, live_relay_tasks
-from tests.support.speech import FakeMedia, FakeSTT
+from tests.support.speech import FakeMedia, FakeSTT, FakeTTS
 
 pytestmark = pytest.mark.integration
 
@@ -349,11 +350,16 @@ async def test_voice_token_admission_and_text_context_update(
     )
     media, stt = FakeMedia(), FakeSTT()
 
-    def source(settings: Settings, session_id: UUID) -> FakeMedia:
-        assert session_id == t.source.session_id
+    def source(settings: Settings, session_id: UUID, shared: object = None) -> FakeMedia:
+        # Phase 9: admission passes the shared LiveKitMediaSession to the input source.
+        assert session_id == t.source.session_id and shared is not None
         return media
 
+    def no_sink(shared: object) -> FakeSink:
+        raise AssertionError("TTS disabled: no output sink may be built")
+
     monkeypatch.setattr(voice, "LiveKitAudioSource", source)
+    monkeypatch.setattr(voice, "LiveKitAudioSink", no_sink)
     monkeypatch.setattr(voice, "AssemblyAIStreaming", lambda settings: stt)
     socket = Socket(app, t.source.session_id)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -378,3 +384,91 @@ async def test_voice_token_admission_and_text_context_update(
         finally:
             await socket.close()
     assert media.closed and stt.closed and not live_relay_tasks()
+
+
+async def test_voice_admission_wires_speech_output_on_shared_media(
+    realtime_app: FastAPI,
+    text_harness: TextHarness,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    t, app = text_harness, realtime_app
+    app.state.database = t.source.database
+    app.state.settings = Settings(
+        voice_enabled=True,
+        livekit_url="ws://livekit:7880",
+        livekit_api_key=SecretStr("devkey"),
+        livekit_api_secret=SecretStr("secret"),
+        assemblyai_api_key=SecretStr("not-used"),
+        tts_enabled=True,
+        elevenlabs_api_key=SecretStr("not-used-tts"),
+        tts_voice_id="Voice123",
+    )
+    tts = FakeTTS([bytes([i % 251, 1]) * 480 for i in range(4)])
+    setattr(tts, "provider_name", "fake")  # noqa: B010 - metadata read via getattr
+    setattr(tts, "model", "deterministic")  # noqa: B010
+    app.state.tts_provider = tts
+    shared: list[object] = []
+    sources: list[object] = []
+    sinks: list[object] = []
+    input_media, stt, sink = FakeMedia(), FakeSTT(), FakeSink()
+
+    class SharedMedia:
+        def __init__(self, settings: Settings, session_id: UUID) -> None:
+            shared.append(self)
+
+    def source(settings: Settings, session_id: UUID, media: object) -> FakeMedia:
+        sources.append(media)
+        return input_media
+
+    def make_sink(media: object) -> FakeSink:
+        sinks.append(media)
+        return sink
+
+    monkeypatch.setattr(voice, "LiveKitMediaSession", SharedMedia)
+    monkeypatch.setattr(voice, "LiveKitAudioSource", source)
+    monkeypatch.setattr(voice, "LiveKitAudioSink", make_sink)
+    monkeypatch.setattr(voice, "AssemblyAIStreaming", lambda settings: stt)
+    socket = Socket(app, t.source.session_id)
+
+    async def collect_turn(request: AgentTurnRequest, audio_events: int) -> list[str]:
+        await socket.submit(request)
+        seen: list[str] = []
+        while "SESSION_STATE_CHANGED:IDLE" not in seen or (
+            sum(name.startswith("AGENT_AUDIO") for name in seen) < audio_events
+        ):
+            event = await socket.receive()
+            state = event.payload.model_dump().get("state")
+            seen.append(f"{event.event_type}:{state}" if state else event.event_type)
+        return seen
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        await socket.start()
+        try:
+            response = await client.post(f"/api/voice/{t.source.session_id}/token", json={})
+            assert response.status_code == 200 and "not-used-tts" not in response.text
+            # One backend participant: the same media session feeds input and output.
+            assert len(shared) == 1 and sources == shared and sinks == shared
+            t.route("non_emergency_maintenance")
+            request = await t.request("My AC isn't cooling.")
+            first = await collect_turn(request, audio_events=2)
+            assert first.index("AGENT_RESPONSE") < first.index("TURN_COMPLETED")
+            assert first.index("TURN_COMPLETED") < first.index("AGENT_AUDIO_OUTPUT_STARTED")
+            assert first.count("AGENT_AUDIO_OUTPUT_ENDED") == 1
+            ended = next(
+                e.payload for e in socket.events if e.event_type == "AGENT_AUDIO_OUTPUT_ENDED"
+            )
+            assert isinstance(ended, AgentAudioOutputEnded) and ended.status == "COMPLETED"
+            assert len(sink.accepted) == 4 and len(tts.requests) == 1
+            # Exact business replay: text again, no speech.
+            replay = await collect_turn(request, audio_events=0)
+            replayed = [e for e in socket.events if e.event_type == "AGENT_RESPONSE"][-1]
+            assert isinstance(replayed.payload, AgentResponse) and replayed.payload.replayed
+            await socket.send(Ping())
+            while (await socket.receive()).event_type != "PONG":
+                pass
+            assert not any(name.startswith("AGENT_AUDIO") for name in replay)
+            assert sum(e.event_type == "AGENT_AUDIO_OUTPUT_ENDED" for e in socket.events) == 1
+            assert len(tts.requests) == 1
+        finally:
+            await socket.close()
+    assert sink.closes == 1 and input_media.closed and stt.closed and not live_relay_tasks()

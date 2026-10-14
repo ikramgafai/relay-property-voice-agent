@@ -131,12 +131,9 @@ def test_output_has_no_business_or_vendor_dependencies() -> None:
         "httpx",
     )
     assert not any(module.startswith(forbidden) for module in found), found
-    for runtime in (
-        "realtime/session.py",
-        "realtime/speech.py",
-        "api/voice.py",
-        "core/lifecycle.py",
-    ):
+    # Step 7A: voice admission composes SpeechOutput; the session and input pipeline only
+    # know the provider-neutral presentation protocol.
+    for runtime in ("realtime/session.py", "realtime/speech.py"):
         assert "app.realtime.output" not in (root / runtime).read_text()
 
 

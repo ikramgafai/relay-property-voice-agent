@@ -1,4 +1,4 @@
-"""Versioned text-only transport protocol. No business authority enters from clients."""
+"""Versioned realtime transport protocol. No business authority enters from clients."""
 
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -168,6 +168,37 @@ class SpeechFailed(Payload):
     message: str = "Speech input stopped. Reconnect voice and repeat unfinished speech."
 
 
+class AgentAudioOutputStarted(Payload):
+    """The first audio frame was accepted by the local output sink; not remote playback."""
+
+    kind: Literal["AGENT_AUDIO_OUTPUT_STARTED"] = "AGENT_AUDIO_OUTPUT_STARTED"
+    speech_output_id: UUID
+    turn_id: UUID
+    provider: str | None = None
+    model: str | None = None
+
+
+class AgentAudioOutputEnded(Payload):
+    kind: Literal["AGENT_AUDIO_OUTPUT_ENDED"] = "AGENT_AUDIO_OUTPUT_ENDED"
+    speech_output_id: UUID
+    turn_id: UUID
+    status: Literal["COMPLETED", "FAILED", "CANCELLED", "SUPERSEDED"]
+    code: (
+        Literal[
+            "INVALID_REQUEST",
+            "TTS_UNAVAILABLE",
+            "TTS_INTERRUPTED",
+            "INVALID_AUDIO",
+            "PUBLISH_FAILED",
+            "MEDIA_ENDED",
+            "OUTPUT_UNAVAILABLE",
+            "SESSION_ENDED",
+        ]
+        | None
+    ) = None
+    accepted_audio_ms: float = Field(ge=0)
+
+
 ServerPayload = Annotated[
     Started
     | StateChanged
@@ -181,7 +212,9 @@ ServerPayload = Annotated[
     | SpeechPartial
     | SpeechFinal
     | SpeechSignal
-    | SpeechFailed,
+    | SpeechFailed
+    | AgentAudioOutputStarted
+    | AgentAudioOutputEnded,
     Field(discriminator="kind"),
 ]
 

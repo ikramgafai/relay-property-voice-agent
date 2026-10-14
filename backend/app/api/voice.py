@@ -12,7 +12,15 @@ from app.db.session import get_database
 from app.property.schemas import DomainModel
 from app.providers.stt.assemblyai import AssemblyAIStreaming
 from app.realtime.manager import RealtimeSessionManager
-from app.realtime.media.livekit import LiveKitAudioSource, participant_name, room_name, token
+from app.realtime.media.livekit import (
+    LiveKitAudioSink,
+    LiveKitAudioSource,
+    LiveKitMediaSession,
+    participant_name,
+    room_name,
+    token,
+)
+from app.realtime.output import SpeechOutput
 from app.realtime.schemas import State
 from app.realtime.speech import SpeechPipeline
 from app.realtime.speech_context import speech_context
@@ -52,6 +60,10 @@ async def voice_token(session_id: UUID, body: VoiceInput, request: Request) -> V
             if isinstance(old, SpeechPipeline) and not old.closed:
                 raise HTTPException(409, "VOICE_ALREADY_ACTIVE")
             await old.close()
+        if realtime.output is not None:
+            # The previous attachment's Room is gone; its output can never publish again.
+            await realtime.output.close()
+            realtime.output = None
         try:
             store = SQLAlchemyTurnStore(get_database(request))
             _, context = await store.load(session_id)
@@ -64,14 +76,29 @@ async def voice_token(session_id: UUID, body: VoiceInput, request: Request) -> V
                 participant_token=token(settings, session_id),
                 conversation_session_id=session_id,
             )
+            # One backend participant: input and (optional) output share this media session.
+            media = LiveKitMediaSession(settings, session_id)
             pipeline = SpeechPipeline(
                 realtime,
-                LiveKitAudioSource(settings, session_id),
+                LiveKitAudioSource(settings, session_id, media),
                 AssemblyAIStreaming(settings),
                 speech_context(context, previous),
             )
+            provider = getattr(request.app.state, "tts_provider", None)
+            output = None
+            if settings.tts_enabled and provider is not None:
+                output = SpeechOutput(
+                    provider,
+                    LiveKitAudioSink(media),
+                    provider_name=getattr(provider, "provider_name", None),
+                    model=getattr(provider, "model", None),
+                    log=realtime.log,
+                    observer=realtime.presentation_event,
+                )
             realtime.speech = pipeline
             pipeline.start()
+            if output is not None:
+                realtime.attach_output(output)
             return result
         except Exception:
             raise HTTPException(503, "VOICE_SESSION_UNAVAILABLE") from None

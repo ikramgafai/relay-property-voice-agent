@@ -16,6 +16,7 @@ from app.db.session import Database
 from app.db.tool_store import SQLAlchemyToolStore
 from app.providers.llm.openai_compatible import OpenAICompatibleRoutingProvider
 from app.providers.llm.phrasing import CompatiblePhrasingProvider
+from app.providers.tts.elevenlabs import ElevenLabsStreamingTTS
 from app.realtime.manager import RealtimeSessionManager
 from app.realtime.schemas import Binding
 from app.routing.router import ServiceRouter
@@ -28,7 +29,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     database = Database(app.state.settings.database_url.get_secret_value())
     app.state.database = database
     client = httpx.AsyncClient()
+    app.state.http_client = client
     settings = app.state.settings
+    # Speech output is optional presentation; built only when explicitly enabled, on the
+    # shared HTTP client. Voice admission attaches it per session.
+    app.state.tts_provider = None
+    if settings.tts_enabled:
+        assert settings.elevenlabs_api_key and settings.tts_voice_id  # validated settings
+        app.state.tts_provider = ElevenLabsStreamingTTS(
+            client, settings.elevenlabs_api_key, settings.tts_voice_id, settings.tts_model
+        )
     provider = (
         OpenAICompatibleRoutingProvider(settings, client)
         if settings.routing_model_base_url

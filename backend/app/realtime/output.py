@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from time import perf_counter
+from typing import Literal
 from uuid import UUID, uuid4
 
 import structlog
@@ -21,6 +22,7 @@ from app.providers.tts.protocol import StreamingTTSProvider
 from app.providers.tts.schemas import SpeechRequest, TTSFailure
 from app.realtime.media.pcm import PcmAlignmentError, PcmFramer
 from app.realtime.media.protocol import AudioFrame, MediaAudioSink, MediaSinkClosed
+from app.realtime.presentation import PresentationEvent, PresentationObserver
 
 FRAME_MS = 20
 BUFFER_FRAMES = 25  # 500 ms of Python-side audio ahead of the sink
@@ -119,12 +121,14 @@ class SpeechOutput:
         capture_timeout: float = 5,
         connect_timeout: float = 10,
         log: Callable[..., None] | None = None,
+        observer: PresentationObserver | None = None,
     ) -> None:
         self.provider, self.sink = provider, sink
         self.provider_name, self.model = provider_name, model
         self.first_audio_timeout, self.chunk_timeout = first_audio_timeout, chunk_timeout
         self.capture_timeout, self.connect_timeout = capture_timeout, connect_timeout
         self._log = log or structlog.get_logger().info
+        self._observer = observer
         self.attachment_id = uuid4()
         self.available = True
         self.closed = False
@@ -348,6 +352,7 @@ class SpeechOutput:
             if record.first_frame_accepted_by_sink is None:
                 record.first_frame_accepted_by_sink = perf_counter()
                 record.status = OutputStatus.OUTPUTTING
+                self._notify(record, "STARTED")
             record.frames_accepted += 1
             record.accepted_audio_ms += len(frame.data) / 2 / frame.format.sample_rate * 1000
         record.output_drained = perf_counter()
@@ -361,6 +366,7 @@ class SpeechOutput:
         record.ended_at = perf_counter()
         record.ended.set()
         self.finished.append(record)
+        self._notify(record, "ENDED")
 
         def since(tick: float | None) -> float | None:
             return None if tick is None else (tick - record.created) * 1000
@@ -385,3 +391,25 @@ class SpeechOutput:
             underruns=record.underruns,
             stale_frames=record.stale_frames,
         )
+
+    def _notify(self, record: SpeechOutputRecord, kind: Literal["STARTED", "ENDED"]) -> None:
+        """At most one STARTED and one ENDED per record; observer errors never break output."""
+        if self._observer is None:
+            return
+        ended = kind == "ENDED"
+        event = PresentationEvent(
+            kind=kind,
+            speech_output_id=record.speech_output_id,
+            turn_id=record.turn_id,
+            provider=record.provider,
+            model=record.model,
+            status=record.status.value if ended else None,
+            code=record.code.value if ended and record.code else None,
+            accepted_audio_ms=record.accepted_audio_ms,
+        )
+        try:
+            self._observer(event)
+        except Exception:
+            self._log(
+                "SPEECH_OUTPUT_OBSERVER_FAILED", speech_output_id=str(record.speech_output_id)
+            )

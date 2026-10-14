@@ -8,11 +8,14 @@ from uuid import UUID, uuid4
 import structlog
 
 from app.agent.errors import TurnError
-from app.agent.schemas import AgentTurnRequest
+from app.agent.schemas import AgentTurnRequest, AgentTurnResult
 from app.realtime.errors import Backpressure, application_code
+from app.realtime.presentation import PresentationEvent, SpeechPresentation
 from app.realtime.protocol import SessionLookup, SpeechAttachment, TurnProcessor
 from app.realtime.queue import OutboundQueue
 from app.realtime.schemas import (
+    AgentAudioOutputEnded,
+    AgentAudioOutputStarted,
     AgentResponse,
     Binding,
     Cancel,
@@ -35,6 +38,9 @@ from app.realtime.schemas import (
     TurnCompleted,
     TurnStarted,
 )
+from app.realtime.spoken import spoken_text
+
+PRESENTATION_EVENTS = 16  # at most two per presentation attempt; bounded, never silent
 
 
 class RealtimeSession:
@@ -69,8 +75,13 @@ class RealtimeSession:
         self.busy_count = 0
         self.lookup = lookup
         self.speech: SpeechAttachment | None = None
+        self.output: SpeechPresentation | None = None
         self.last_response: str | None = None
         self._input_lock = asyncio.Lock()
+        self._presentation_events: asyncio.Queue[PresentationEvent] = asyncio.Queue(
+            maxsize=PRESENTATION_EVENTS
+        )
+        self._presentation_task: asyncio.Task[None] | None = None
 
     def log(self, event: str, **fields: object) -> None:
         structlog.get_logger().info(
@@ -263,6 +274,8 @@ class RealtimeSession:
             self.last_response = result.response_text
             if self.speech is not None:
                 self.speech.on_response(result.response_text)
+            # Text and completion are already queued; speech never delays or changes them.
+            self._present(result)
         except asyncio.CancelledError:
             cancelled = True
             raise
@@ -282,6 +295,64 @@ class RealtimeSession:
                 duration_ms=(perf_counter() - tick) * 1000,
                 cancelled=cancelled,
             )
+
+    def attach_output(self, output: SpeechPresentation) -> None:
+        """Own an optional speech presentation and the task mapping its lifecycle to events."""
+        if self.output is not None or self.closed:
+            raise RuntimeError("Speech output already attached or session closed")
+        self.output = output
+        if self._presentation_task is None:
+            self._presentation_task = asyncio.create_task(
+                self._presentation_pump(), name=f"relay-presentation-{self.realtime_session_id}"
+            )
+        output.start()
+
+    def _present(self, result: AgentTurnResult) -> None:
+        """Speak only first deliveries; exact business replays are never re-spoken."""
+        output = self.output
+        if output is None or result.replayed or not output.available or self.stopped.is_set():
+            return
+        try:
+            output.present(result.turn_id, spoken_text(result.response_text))
+        except Exception:
+            self.log("SPEECH_PRESENTATION_FAILED", turn_id=str(result.turn_id))
+
+    def presentation_event(self, event: PresentationEvent) -> None:
+        try:
+            self._presentation_events.put_nowait(event)
+        except asyncio.QueueFull:
+            self.log(
+                "SPEECH_OUTPUT_EVENT_DROPPED",
+                speech_output_id=str(event.speech_output_id),
+                kind=event.kind,
+                status=event.status,
+            )
+
+    async def _presentation_pump(self) -> None:
+        while True:
+            event = await self._presentation_events.get()
+            payload: AgentAudioOutputStarted | AgentAudioOutputEnded
+            if event.kind == "STARTED":
+                payload = AgentAudioOutputStarted(
+                    speech_output_id=event.speech_output_id,
+                    turn_id=event.turn_id,
+                    provider=event.provider,
+                    model=event.model,
+                )
+            else:
+                payload = AgentAudioOutputEnded.model_validate(
+                    {
+                        "speech_output_id": event.speech_output_id,
+                        "turn_id": event.turn_id,
+                        "status": event.status,
+                        "code": event.code,
+                        "accepted_audio_ms": event.accepted_audio_ms,
+                    }
+                )
+            try:
+                await self.emit(payload, event.turn_id)
+            except Backpressure:
+                return  # emit already requested an explicit replay-required close
 
     async def cancel(self, turn_id: UUID) -> None:
         task = self.active_task
@@ -310,6 +381,13 @@ class RealtimeSession:
             if self.speech is not None:
                 await self.speech.close()
                 self.speech = None
+            if self.output is not None:
+                await self.output.close()
+                self.output = None
+            if self._presentation_task is not None:
+                self._presentation_task.cancel()
+                await asyncio.gather(self._presentation_task, return_exceptions=True)
+                self._presentation_task = None
             task = self.active_task
             if task is not None:
                 if not task.done() and not task.cancelling():

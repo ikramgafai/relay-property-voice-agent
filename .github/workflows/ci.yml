@@ -18,6 +18,8 @@ jobs:
       - run: uv run --locked ruff check .
       - run: uv run --locked ruff format --check .
       - run: uv run --locked mypy
+      # Browser agent-audio module: dependency-free, runner's preinstalled Node.
+      - run: node --test frontend/tests/relay-audio.test.mjs
 
   tests:
     # Same isolated suite used for every phase verification: PostgreSQL 17 (tmpfs),

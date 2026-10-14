@@ -312,13 +312,14 @@ def test_tts_dependency_boundaries_and_no_runtime_wiring() -> None:
     assert not any(
         m.startswith(("livekit", "asyncio")) for m in imports(root / "realtime/media/pcm.py")
     )
-    for runtime in (
-        "realtime/session.py",
-        "realtime/speech.py",
-        "api/voice.py",
-        "core/lifecycle.py",
-    ):
+    # Step 7A: only the composition root builds the TTS adapter; sessions, the input
+    # pipeline and voice admission never import providers or PCM framing directly.
+    for runtime in ("realtime/session.py", "realtime/speech.py", "api/voice.py"):
         assert not any(
             m.startswith(("app.providers.tts", "app.realtime.media.pcm"))
             for m in imports(root / runtime)
         ), runtime
+    lifecycle = {
+        m for m in imports(root / "core/lifecycle.py") if m.startswith("app.providers.tts")
+    }
+    assert lifecycle == {"app.providers.tts.elevenlabs"}
