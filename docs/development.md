@@ -30,7 +30,7 @@ build context.
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Required when voice is enabled |
 | `ASSEMBLYAI_API_KEY` | Required when voice is enabled |
 | `STT_MODEL`, `STT_SAMPLE_RATE`, `STT_LANGUAGE_CODES` | `universal-3-6-pro`, `16000`, `["en"]` |
-| `STT_MIN_TURN_SILENCE`, `STT_MAX_TURN_SILENCE` | `128`, `1280` ms (provider endpointing) |
+| `STT_MIN_TURN_SILENCE`, `STT_MAX_TURN_SILENCE` | `800`, `2000` ms (provider endpointing) |
 
 The model adapter speaks the OpenAI-compatible Chat Completions API with strict JSON-schema
 output; any provider supporting that works. No provider or model is selected by default.

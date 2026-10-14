@@ -132,6 +132,13 @@ def test_voice_configuration_rejected(values: dict[str, object]) -> None:
         Settings(**values)  # type: ignore[arg-type]
 
 
+def test_turn_silence_defaults_and_validation() -> None:
+    settings = Settings()
+    assert (settings.stt_min_turn_silence, settings.stt_max_turn_silence) == (800, 2000)
+    with pytest.raises(ValidationError):
+        Settings(stt_min_turn_silence=2500)  # above the 2000 ms maximum default
+
+
 def test_multilingual_and_audio_contract() -> None:
     assert Settings(stt_language_codes=["en", "fr", "ar"]).stt_language_codes == ["en", "fr", "ar"]
     with pytest.raises(ValidationError):

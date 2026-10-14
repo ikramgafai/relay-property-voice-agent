@@ -47,8 +47,11 @@ class Settings(BaseSettings):
     stt_model: Literal["universal-3-6-pro"] = "universal-3-6-pro"
     stt_language_codes: list[str] = Field(default_factory=lambda: ["en"])
     stt_sample_rate: int = Field(default=16000, ge=8000, le=48000)
-    stt_min_turn_silence: int = Field(default=128, ge=50, le=10000)
-    stt_max_turn_silence: int = Field(default=1280, ge=50, le=10000)
+    # AssemblyAI turn detection (ms). min: silence before the model runs an end-of-turn
+    # check; max: silence that always ends the turn. 128 ms ended turns on natural
+    # mid-sentence pauses in live validation, committing fragments as separate turns.
+    stt_min_turn_silence: int = Field(default=800, ge=50, le=10000)
+    stt_max_turn_silence: int = Field(default=2000, ge=50, le=10000)
     # Speech output (Phase 9). Disabled by default; nothing below is read while disabled.
     tts_enabled: bool = False
     elevenlabs_api_key: SecretStr | None = None

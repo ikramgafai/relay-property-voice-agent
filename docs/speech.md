@@ -61,7 +61,8 @@ The bounded SDK media buffer is not a lossless recording guarantee under overloa
 AssemblyAI Begin supplies stream identity. Turn events revise the whole current transcript;
 `end_of_turn=true` alone creates a final. There is no Relay silence heuristic or promotion of a
 partial on timeout. See [provider turn detection](https://www.assemblyai.com/docs/streaming/turn-detection).
-Default provider silence settings are 128/1280 ms and remain configurable.
+Default provider silence settings are 800/2000 ms (raised from 128/1280 after live speech ended
+turns on natural mid-sentence pauses) and remain configurable.
 
 SpeechStarted is retained until the next Turn supplies its turn_order; USER_SPEECH_STARTED then
 carries the actual provider timestamp. This can delay event delivery but does not infer speech

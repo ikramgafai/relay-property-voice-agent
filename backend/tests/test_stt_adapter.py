@@ -121,3 +121,63 @@ async def test_wrong_audio_format_rejected(monkeypatch: pytest.MonkeyPatch) -> N
             )
     finally:
         await adapter.close()
+
+
+async def connection_params(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> dict[str, list[str]]:
+    wire = Wire()
+    await wire.messages.put(json.dumps({"type": "Begin", "id": str(uuid4())}))
+    uri = ""
+
+    async def connect(url: str, **kwargs: object) -> ClientConnection:
+        nonlocal uri
+        uri = url
+        return cast(ClientConnection, wire)
+
+    monkeypatch.setattr(assemblyai, "connect", connect)
+    adapter = AssemblyAIStreaming(settings)
+    await adapter.open(SpeechContext())
+    await adapter.close()
+    return parse_qs(urlsplit(uri).query)
+
+
+async def test_turn_detection_defaults_tolerate_mid_sentence_pauses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    params = await connection_params(monkeypatch, Settings(assemblyai_api_key=SecretStr("k")))
+    assert params["min_turn_silence"] == ["800"]
+    assert params["max_turn_silence"] == ["2000"]
+    # Unrelated STT configuration is unchanged.
+    assert params["speech_model"] == ["universal-3-6-pro"]
+    assert params["sample_rate"] == ["16000"] and params["encoding"] == ["pcm_s16le"]
+    assert params["language_detection"] == ["true"]
+    assert json.loads(params["language_codes"][0]) == ["en"]
+    assert json.loads(params["keyterms_prompt"][0]) == []
+    # Only parameters documented for universal-3-6-pro turn detection are sent.
+    assert "end_of_turn_confidence_threshold" not in params and "mode" not in params
+
+
+async def test_turn_detection_remains_explicitly_configurable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        assemblyai_api_key=SecretStr("k"), stt_min_turn_silence=640, stt_max_turn_silence=1500
+    )
+    params = await connection_params(monkeypatch, settings)
+    assert params["min_turn_silence"] == ["640"] and params["max_turn_silence"] == ["1500"]
+
+
+async def test_only_provider_end_of_turn_becomes_final(monkeypatch: pytest.MonkeyPatch) -> None:
+    adapter, wire, _ = await open_adapter(monkeypatch)
+    for order, end_of_turn in ((1, False), (1, False), (1, True)):
+        turn = {
+            "type": "Turn",
+            "turn_order": order,
+            "transcript": "Wait",
+            "end_of_turn": end_of_turn,
+        }
+        await wire.messages.put(json.dumps(turn))
+    kinds = [(await adapter.receive()).kind for _ in range(3)]
+    assert kinds == ["PARTIAL", "PARTIAL", "FINAL"]
+    await adapter.close()
