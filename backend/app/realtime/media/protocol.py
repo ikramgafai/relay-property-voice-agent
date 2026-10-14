@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 from typing import Literal, Protocol, Self
+from uuid import UUID
 
 from pydantic import Field, model_validator
 
@@ -27,3 +28,29 @@ class AudioFrame(DomainModel):
 class MediaAudioSource(Protocol):
     def __aiter__(self) -> AsyncGenerator[AudioFrame, None]: ...
     async def close(self) -> None: ...
+
+
+class MediaSinkClosed(Exception):
+    """The media path ended (participant/room gone); the sink accepts no further audio."""
+
+
+class MediaAudioSink(Protocol):
+    """Outbound presentation audio. Acceptance means the local transport took the frame;
+    it is not evidence that a remote client received or played it."""
+
+    @property
+    def format(self) -> AudioFormat: ...
+    async def connect(self) -> None: ...
+
+    async def capture(self, frame: AudioFrame, speech_output_id: UUID) -> None:
+        """Wait until the frame is accepted (backpressure). Raise MediaSinkClosed when the
+        media path has ended; any other exception is a transport failure."""
+        ...
+
+    async def clear(self) -> None:
+        """Discard locally buffered, unplayed audio (cancellation seam; unused in Phase 9)."""
+        ...
+
+    async def close(self) -> None:
+        """Idempotent."""
+        ...
