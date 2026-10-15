@@ -539,3 +539,74 @@ async def test_barge_in_keeps_the_interrupting_utterance_and_speaks_the_next_res
     ]
     await session.end()
     assert not relay_input_tasks()
+
+
+# --- Phase 10 diagnostics: provider events logged as counts only --------------------------------
+
+
+async def test_provider_events_are_logged_as_counts_and_state_only() -> None:
+    session, pipeline, stt, _, recorder = await attached()
+    logs: list[tuple[str, dict[str, object]]] = []
+    session.log = lambda event, **fields: logs.append((event, fields))  # type: ignore[method-assign]
+    await stt.emit("SPEECH_STARTED", order=1)
+    await stt.emit("PARTIAL", "Actually", order=1)
+    await stt.emit("PARTIAL", "Actually tell me", order=1)
+    await stt.emit("PARTIAL", "Actually tell me about leasing", order=1)
+    await stt.emit("FINAL", "Actually, tell me about leasing instead.", order=1)
+    await requests_reach(recorder, 1)
+    # Admission is unchanged: the provider final, verbatim, as one application turn.
+    assert recorder.requests[0].utterance == "Actually, tell me about leasing instead."
+    await processed(session)
+    await stt.emit("PARTIAL", "Next", order=2)  # a newer provider turn restarts the ordinal
+    await until(lambda: pipeline.partials == 4)
+    received = [f for name, f in logs if name == "STT_PROVIDER_EVENT_RECEIVED"]
+    assert [f["kind"] for f in received] == [
+        "SPEECH_STARTED",
+        "PARTIAL",
+        "PARTIAL",
+        "PARTIAL",
+        "FINAL",
+        "PARTIAL",
+    ]
+    assert [f["turn_order"] for f in received] == [1, 1, 1, 1, 1, 2]
+    assert [f["partial_ordinal"] for f in received] == [None, 1, 2, 3, None, 1]
+    assert [f["transcript_word_count"] for f in received] == [0, 1, 3, 5, 6, 1]
+    assert [f["transcript_char_count"] for f in received] == [0, 8, 16, 30, 40, 4]
+    assert [f["speech_start_signalled"] for f in received] == [
+        False,
+        True,
+        True,
+        True,
+        True,
+        False,
+    ]
+    assert [f["last_final"] for f in received] == [-1, -1, -1, -1, -1, 1]
+    assert [f["provisional_exists"] for f in received] == [False] * 6
+    assert all(f["continuing"] is False and f["audio_timestamp_ms"] is None for f in received)
+    assert {f["stream_id"] for f in received} == {str(stt.stream_id)}
+    # No transcript text in any log line, provider-event or otherwise.
+    assert "leasing" not in str(logs) and "Actually" not in str(logs)
+    assert "Next" not in str(logs)
+    await session.end()
+
+
+async def test_provider_event_log_reports_continuation_state() -> None:
+    session, pipeline, stt, _, recorder = await attached()
+    logs: list[tuple[str, dict[str, object]]] = []
+    session.log = lambda event, **fields: logs.append((event, fields))  # type: ignore[method-assign]
+    await stt.emit("FINAL", "Wait, the water is getting close.", order=0)
+    await until(lambda: pipeline.provisional is not None)
+    await stt.emit("PARTIAL", "through", order=1)
+    await stt.emit("PARTIAL", "through an", order=1)
+    await until(lambda: pipeline.partials == 2)
+    received = [f for name, f in logs if name == "STT_PROVIDER_EVENT_RECEIVED"]
+    assert [(f["provisional_exists"], f["continuing"]) for f in received] == [
+        (False, False),
+        (True, False),  # logged before handling: this partial starts the continuation
+        (True, True),
+    ]
+    await stt.emit("FINAL", "through an electrical outlet.", order=1)
+    await requests_reach(recorder, 1)
+    assert pipeline.coalesced == 1
+    await processed(session)
+    await session.end()

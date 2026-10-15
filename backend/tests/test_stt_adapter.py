@@ -1,5 +1,6 @@
 import asyncio
 import json
+from collections.abc import Callable
 from typing import cast
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
@@ -32,7 +33,9 @@ class Wire:
         self.closed = True
 
 
-async def open_adapter(monkeypatch: pytest.MonkeyPatch) -> tuple[AssemblyAIStreaming, Wire, str]:
+async def open_adapter(
+    monkeypatch: pytest.MonkeyPatch, log: Callable[..., None] | None = None
+) -> tuple[AssemblyAIStreaming, Wire, str]:
     wire = Wire()
     await wire.messages.put(json.dumps({"type": "Begin", "id": str(uuid4())}))
     uri = ""
@@ -46,7 +49,8 @@ async def open_adapter(monkeypatch: pytest.MonkeyPatch) -> tuple[AssemblyAIStrea
 
     monkeypatch.setattr(assemblyai, "connect", connect)
     adapter = AssemblyAIStreaming(
-        Settings(assemblyai_api_key=SecretStr("test-only"), stt_language_codes=["en", "fr", "ar"])
+        Settings(assemblyai_api_key=SecretStr("test-only"), stt_language_codes=["en", "fr", "ar"]),
+        log=log,
     )
     await adapter.open(SpeechContext(keyterms=["Palm Heights"], agent_response="Which service?"))
     return adapter, wire, uri
@@ -180,4 +184,190 @@ async def test_only_provider_end_of_turn_becomes_final(monkeypatch: pytest.Monke
         await wire.messages.put(json.dumps(turn))
     kinds = [(await adapter.receive()).kind for _ in range(3)]
     assert kinds == ["PARTIAL", "PARTIAL", "FINAL"]
+    await adapter.close()
+
+
+# --- Phase 10 diagnostics: speech-start hold and counts-only turn logs ----------------------
+
+
+Logged = list[tuple[str, dict[str, object]]]
+
+
+def recorder() -> tuple[Logged, Callable[..., None]]:
+    logs: Logged = []
+    return logs, lambda event, **fields: logs.append((event, fields))
+
+
+def named(logs: Logged, name: str) -> list[dict[str, object]]:
+    return [fields for event, fields in logs if event == name]
+
+
+async def logged(logs: Logged, name: str, count: int = 1) -> dict[str, object]:
+    for _ in range(1000):
+        if len(named(logs, name)) >= count:
+            return named(logs, name)[-1]
+        await asyncio.sleep(0)
+    raise AssertionError(f"{name} not logged {count} time(s)")
+
+
+def fake_clock(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    clock = [100.0]
+    monkeypatch.setattr(assemblyai, "perf_counter", lambda: clock[0])
+    return clock
+
+
+async def test_raw_speech_start_is_logged_on_arrival_and_its_hold_measured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = fake_clock(monkeypatch)
+    logs, log = recorder()
+    adapter, wire, _ = await open_adapter(monkeypatch, log)
+    for sequence in range(6):  # 4800 bytes = three 50 ms provider chunks
+        await adapter.send(AudioFrame(data=b"\x00\x00" * 400, sequence=sequence))
+    receive = asyncio.create_task(adapter.receive())
+    clock[0] = 101.0
+    await wire.messages.put('{"type":"SpeechStarted","timestamp":1234}')
+    raw = await logged(logs, "ASSEMBLYAI_RAW_SPEECH_STARTED")
+    # A. Logged when the raw message arrives, while nothing is exposed yet (current hold).
+    assert not receive.done()
+    assert raw == {
+        "stream_id": str(adapter.stream_id),
+        "since_stream_open_ms": pytest.approx(1000.0),
+        "audio_sent_ms": pytest.approx(150.0),
+        "audio_timestamp_ms": 1234,
+        "replaced_waiting_speech_start": False,
+    }
+    assert adapter.speech_tick == 101.0  # B. monotonic arrival retained
+    clock[0] = 101.75
+    secret = "Actually tell me"
+    turn = {
+        "type": "Turn",
+        "turn_order": 4,
+        "transcript": secret,
+        "end_of_turn": False,
+        "language_code": "en",
+        "words": [
+            {"start": 1300, "end": 1500, "text": "Actually"},
+            {"start": 1550, "end": 1700, "text": "tell"},
+            {"start": 1720, "end": 1840, "text": "me"},
+        ],
+    }
+    await wire.messages.put(json.dumps(turn))
+    # C. Public behavior unchanged: SPEECH_STARTED first, then the pending PARTIAL.
+    started = await receive
+    assert started.kind == "SPEECH_STARTED" and started.turn_order == 4
+    assert started.audio_timestamp_ms == 1234 and started.transcript == ""
+    partial = await adapter.receive()
+    assert partial.kind == "PARTIAL" and partial.transcript == secret
+    assert partial.turn_order == 4 and partial.language == "en"
+    # D. The hold is measured from raw arrival to release at the first Turn.
+    received = named(logs, "ASSEMBLYAI_TURN_RECEIVED")[0]
+    assert received == {
+        "stream_id": str(adapter.stream_id),
+        "since_stream_open_ms": pytest.approx(1750.0),
+        "audio_sent_ms": pytest.approx(150.0),
+        "turn_order": 4,
+        "end_of_turn": False,
+        "transcript_char_count": len(secret),
+        "transcript_word_count": 3,
+        "language": "en",
+        "first_word_start_ms": 1300,
+        "last_word_end_ms": 1840,
+        "speech_start_waiting": True,
+        "held_speech_start_ms": pytest.approx(750.0),
+    }
+    released = named(logs, "ASSEMBLYAI_SPEECH_START_RELEASED")[0]
+    assert released["turn_order"] == 4 and released["audio_timestamp_ms"] == 1234
+    assert released["held_speech_start_ms"] == pytest.approx(750.0)
+    assert adapter.speech_tick is None and adapter.speech_timestamp is None
+    assert [event for event, _ in logs] == [
+        "ASSEMBLYAI_RAW_SPEECH_STARTED",
+        "ASSEMBLYAI_TURN_RECEIVED",
+        "ASSEMBLYAI_SPEECH_START_RELEASED",
+    ]
+    # E. No transcript text in any diagnostic log.
+    assert "Actually" not in str(logs) and "tell" not in str(logs)
+    await adapter.close()
+
+
+async def test_partials_and_final_log_only_counts(monkeypatch: pytest.MonkeyPatch) -> None:
+    logs, log = recorder()
+    adapter, wire, _ = await open_adapter(monkeypatch, log)
+    texts = ["Lease", "Leasing info", "Leasing information please"]
+    for text in texts:
+        await wire.messages.put(
+            json.dumps({"type": "Turn", "turn_order": 2, "transcript": text, "end_of_turn": False})
+        )
+    await wire.messages.put(
+        json.dumps(
+            {
+                "type": "Turn",
+                "turn_order": 2,
+                "transcript": "Leasing information, please.",
+                "end_of_turn": True,
+            }
+        )
+    )
+    events = [await adapter.receive() for _ in range(4)]
+    # Public events are exactly as before: no speech start without a raw SpeechStarted.
+    assert [e.kind for e in events] == ["PARTIAL", "PARTIAL", "PARTIAL", "FINAL"]
+    assert [e.transcript for e in events[:3]] == texts
+    turns = named(logs, "ASSEMBLYAI_TURN_RECEIVED")
+    assert [t["transcript_word_count"] for t in turns] == [1, 2, 3, 3]
+    assert [t["transcript_char_count"] for t in turns] == [5, 12, 26, 28]
+    assert [t["end_of_turn"] for t in turns] == [False, False, False, True]
+    assert all(t["speech_start_waiting"] is False for t in turns)
+    assert all(t["held_speech_start_ms"] is None for t in turns)
+    assert all(t["first_word_start_ms"] is None for t in turns)  # no word timings sent
+    assert not named(logs, "ASSEMBLYAI_SPEECH_START_RELEASED")
+    assert "Leas" not in str(logs) and "please" not in str(logs)
+    await adapter.close()
+
+
+async def test_repeated_speech_start_keeps_current_behavior(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = fake_clock(monkeypatch)
+    logs, log = recorder()
+    adapter, wire, _ = await open_adapter(monkeypatch, log)
+    receive = asyncio.create_task(adapter.receive())
+    await wire.messages.put('{"type":"SpeechStarted","timestamp":500}')
+    await logged(logs, "ASSEMBLYAI_RAW_SPEECH_STARTED")
+    clock[0] = 100.4
+    await wire.messages.put('{"type":"SpeechStarted","timestamp":900}')
+    await logged(logs, "ASSEMBLYAI_RAW_SPEECH_STARTED", count=2)
+    clock[0] = 100.5
+    await wire.messages.put(
+        json.dumps({"type": "Turn", "turn_order": 1, "transcript": "x", "end_of_turn": False})
+    )
+    started = await receive
+    assert started.kind == "SPEECH_STARTED" and started.audio_timestamp_ms == 900  # as before
+    assert (await adapter.receive()).kind == "PARTIAL"
+    raws = named(logs, "ASSEMBLYAI_RAW_SPEECH_STARTED")
+    assert [r["replaced_waiting_speech_start"] for r in raws] == [False, True]
+    released = named(logs, "ASSEMBLYAI_SPEECH_START_RELEASED")[0]
+    assert released["held_speech_start_ms"] == pytest.approx(100.0)  # from the latest
+    await adapter.close()
+
+
+async def test_unexpected_word_timings_never_change_parsing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logs, log = recorder()
+    adapter, wire, _ = await open_adapter(monkeypatch, log)
+    await wire.messages.put(
+        json.dumps(
+            {
+                "type": "Turn",
+                "turn_order": 3,
+                "transcript": "Hello",
+                "end_of_turn": False,
+                "words": "unexpected",
+            }
+        )
+    )
+    event = await adapter.receive()
+    assert event.kind == "PARTIAL" and event.transcript == "Hello"
+    turn = named(logs, "ASSEMBLYAI_TURN_RECEIVED")[0]
+    assert turn["first_word_start_ms"] is None and turn["last_word_end_ms"] is None
     await adapter.close()

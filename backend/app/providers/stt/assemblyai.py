@@ -2,10 +2,13 @@
 
 import asyncio
 import json
+from collections.abc import Callable
+from time import perf_counter
 from typing import Literal
 from urllib.parse import urlencode
 from uuid import UUID
 
+import structlog
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 from websockets.asyncio.client import ClientConnection, connect
 
@@ -32,14 +35,33 @@ class TurnWire(WireEvent):
     transcript: str = Field(max_length=8000)
 
 
+def _word_bounds(wire_json: str | bytes) -> tuple[int | None, int | None]:
+    """Diagnostics only: provider audio offsets of the first and last recognized word.
+
+    Never affects parsing; anything unexpected yields (None, None)."""
+    try:
+        words = json.loads(wire_json).get("words") or []
+        starts = [w["start"] for w in words if isinstance(w.get("start"), int)]
+        ends = [w["end"] for w in words if isinstance(w.get("end"), int)]
+    except Exception:
+        return None, None
+    return (min(starts) if starts else None), (max(ends) if ends else None)
+
+
 class AssemblyAIStreaming:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, *, log: Callable[..., None] | None = None) -> None:
         self.settings = settings
         self.format = AudioFormat(sample_rate=settings.stt_sample_rate)
         self.socket: ClientConnection | None = None
         self.stream_id: UUID | None = None
         self.pending: STTEvent | None = None
         self.speech_timestamp: int | None = None
+        # Diagnostics: server monotonic arrival of the held raw SpeechStarted, and how much
+        # audio the provider had been sent. Counts and timings only; never transcript text.
+        self.speech_tick: float | None = None
+        self.opened_tick: float | None = None
+        self.audio_bytes_sent = 0
+        self._log = log or structlog.get_logger().info
         self.send_lock = asyncio.Lock()
         self.buffer = bytearray()
         self.closed = False
@@ -77,6 +99,7 @@ class AssemblyAIStreaming:
             if begin.type != "Begin" or begin.id is None:
                 raise STTFailure()
             self.stream_id = begin.id
+            self.opened_tick = perf_counter()
             reported_model = begin.configuration.get("model")
             self.actual_model = reported_model if isinstance(reported_model, str) else None
         except Exception:
@@ -94,6 +117,7 @@ class AssemblyAIStreaming:
                 async with asyncio.timeout(3):
                     await self.socket.send(bytes(self.buffer[:size]))
                 del self.buffer[:size]
+                self.audio_bytes_sent += size
 
     async def receive(self) -> STTEvent:
         if self.pending is not None:
@@ -106,9 +130,30 @@ class AssemblyAIStreaming:
                 wire_json = await self.socket.recv()
                 wire = WireEvent.model_validate_json(wire_json)
                 if wire.type == "SpeechStarted":
+                    self._log(
+                        "ASSEMBLYAI_RAW_SPEECH_STARTED",
+                        **self._timing(),
+                        audio_timestamp_ms=wire.timestamp,
+                        replaced_waiting_speech_start=self.speech_timestamp is not None,
+                    )
                     self.speech_timestamp = wire.timestamp
+                    self.speech_tick = perf_counter()
                 elif wire.type == "Turn":
                     wire = TurnWire.model_validate_json(wire_json)
+                    first_word_ms, last_word_ms = _word_bounds(wire_json)
+                    self._log(
+                        "ASSEMBLYAI_TURN_RECEIVED",
+                        **self._timing(),
+                        turn_order=wire.turn_order,
+                        end_of_turn=wire.end_of_turn,
+                        transcript_char_count=len(wire.transcript),
+                        transcript_word_count=len(wire.transcript.split()),
+                        language=wire.language_code,
+                        first_word_start_ms=first_word_ms,
+                        last_word_end_ms=last_word_ms,
+                        speech_start_waiting=self.speech_timestamp is not None,
+                        held_speech_start_ms=self._held_ms(),
+                    )
                     kind: Literal["FINAL", "PARTIAL"] = "FINAL" if wire.end_of_turn else "PARTIAL"
                     event = STTEvent(
                         kind=kind,
@@ -119,7 +164,15 @@ class AssemblyAIStreaming:
                         model=self.settings.stt_model,
                     )
                     if self.speech_timestamp is not None:
+                        self._log(
+                            "ASSEMBLYAI_SPEECH_START_RELEASED",
+                            **self._timing(),
+                            turn_order=wire.turn_order,
+                            audio_timestamp_ms=self.speech_timestamp,
+                            held_speech_start_ms=self._held_ms(),
+                        )
                         timestamp, self.speech_timestamp = self.speech_timestamp, None
+                        self.speech_tick = None
                         self.pending = event
                         return STTEvent(
                             kind="SPEECH_STARTED",
@@ -133,6 +186,21 @@ class AssemblyAIStreaming:
                     raise STTFailure()
         except Exception:
             raise STTFailure() from None
+
+    def _timing(self) -> dict[str, object]:
+        """Common diagnostic fields: stream identity, server time since the stream opened,
+        and how much audio had been sent to the provider at this moment."""
+        now = perf_counter()
+        return {
+            "stream_id": str(self.stream_id) if self.stream_id else None,
+            "since_stream_open_ms": (
+                None if self.opened_tick is None else (now - self.opened_tick) * 1000
+            ),
+            "audio_sent_ms": self.audio_bytes_sent / 2 / self.format.sample_rate * 1000,
+        }
+
+    def _held_ms(self) -> float | None:
+        return None if self.speech_tick is None else (perf_counter() - self.speech_tick) * 1000
 
     async def update_context(self, response_text: str) -> None:
         if self.socket is None or self.closed:

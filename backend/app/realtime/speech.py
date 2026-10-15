@@ -66,6 +66,8 @@ class SpeechPipeline:
         self.closed = False
         self.last_final = -1
         self.last_speech_start = -1  # newest provider turn already signalled as speech start
+        self._partial_turn: int | None = None  # diagnostics: partial ordinal within one turn
+        self._partial_ordinal = 0
         self.stream_id: UUID | None = None
         self.partials = self.finals = self.duplicates = self.failures = 0
         self.first_audio: float | None = None
@@ -202,8 +204,34 @@ class SpeechPipeline:
     def _continuing(self) -> bool:
         return self.provisional is not None and self.provisional.continuing
 
+    def _log_provider_event(self, event: STTEvent) -> None:
+        """Diagnostics only, before any handling: counts and state, never transcript text."""
+        ordinal = None
+        if event.kind == "PARTIAL":
+            if event.turn_order != self._partial_turn:
+                self._partial_turn, self._partial_ordinal = event.turn_order, 0
+            self._partial_ordinal += 1
+            ordinal = self._partial_ordinal
+        pending = self.provisional
+        self.log(
+            "STT_PROVIDER_EVENT_RECEIVED",
+            kind=event.kind,
+            stream_id=str(event.stream_id),
+            turn_order=event.turn_order,
+            transcript_char_count=len(event.transcript),
+            transcript_word_count=len(event.transcript.split()),
+            audio_timestamp_ms=event.audio_timestamp_ms,
+            partial_ordinal=ordinal,
+            speech_start_signalled=event.turn_order <= self.last_speech_start,
+            last_speech_start=self.last_speech_start,
+            last_final=self.last_final,
+            provisional_exists=pending is not None,
+            continuing=pending is not None and pending.continuing,
+        )
+
     async def _handle_event(self, event: STTEvent) -> None:
         loop = asyncio.get_running_loop()
+        self._log_provider_event(event)
         if event.kind == "ERROR":
             raise STTFailure()
         if self.stream_id is None:
