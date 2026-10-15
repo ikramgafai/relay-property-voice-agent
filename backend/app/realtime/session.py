@@ -29,6 +29,7 @@ from app.realtime.schemas import (
     ServerEvent,
     ServerPayload,
     SpeechFinal,
+    SpeechSignal,
     Start,
     Started,
     State,
@@ -316,6 +317,34 @@ class RealtimeSession:
             output.present(result.turn_id, spoken_text(result.response_text))
         except Exception:
             self.log("SPEECH_PRESENTATION_FAILED", turn_id=str(result.turn_id))
+
+    async def user_speech_started(self, signal: SpeechSignal) -> bool:
+        """Barge-in policy for one logical caller-speech start.
+
+        Stops presentation only. The active turn, binding and business results are never
+        touched, and nothing here waits for audio to settle. The non-blocking interrupt is
+        requested before the outbound event so client delivery cannot delay it, and it is
+        requested even when nothing seems to be speaking, because accepted audio may still be
+        queued in the media sink. Returns whether a presentation was newly targeted."""
+        if signal.kind != "USER_SPEECH_STARTED":
+            raise ValueError("Expected a USER_SPEECH_STARTED signal")
+        targeted = False
+        output = self.output
+        if output is not None:
+            try:
+                targeted = output.interrupt()
+            except Exception:
+                self.log(
+                    "SPEECH_PRESENTATION_INTERRUPT_FAILED",
+                    speech_turn_id=str(signal.speech_turn_id),
+                )
+            self.log(
+                "REALTIME_BARGE_IN_REQUESTED",
+                speech_turn_id=str(signal.speech_turn_id),
+                presentation_targeted=targeted,
+            )
+        await self.emit(signal)
+        return targeted
 
     def presentation_event(self, event: PresentationEvent) -> None:
         try:

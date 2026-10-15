@@ -9,13 +9,23 @@ from app.agent.schemas import AgentTurnRequest, AgentTurnResult
 from app.core.config import Settings
 from app.providers.stt.schemas import SpeechContext
 from app.realtime import speech
-from app.realtime.schemas import Binding, ClientEvent, Code, Error, ServerEvent, Start
+from app.realtime.output import OutputFailure, OutputStatus, SpeechOutput
+from app.realtime.schemas import (
+    AgentAudioOutputEnded,
+    Binding,
+    ClientEvent,
+    Code,
+    Error,
+    ServerEvent,
+    Start,
+)
 from app.realtime.session import RealtimeSession
 from app.realtime.speech import SpeechPipeline
 from pydantic import ValidationError
 
-from tests.support.speech import FakeMedia, FakeSTT
-from tests.test_realtime_presentation import result
+from tests.support.output import FakePresentation, FakeSink
+from tests.support.speech import FakeMedia, FakeSTT, FakeTTS
+from tests.test_realtime_presentation import frames, result
 
 GRACE_MS = 250
 
@@ -365,3 +375,167 @@ def test_admission_grace_setting() -> None:
     for invalid in (-1, 5001):
         with pytest.raises(ValidationError):
             Settings(stt_final_admission_grace_ms=invalid)
+
+
+# --- Phase 10: caller speech start -> presentation interruption ---------------------------------
+
+
+async def with_presentation(
+    presentation: FakePresentation | None = None, grace_ms: int = GRACE_MS
+) -> tuple[RealtimeSession, SpeechPipeline, FakeSTT, Recorder, FakePresentation]:
+    session, pipeline, stt, _, recorder = await attached(grace_ms)
+    presentation = presentation or FakePresentation()
+    session.attach_output(presentation)
+    return session, pipeline, stt, recorder, presentation
+
+
+def speech_starts(found: list[ServerEvent]) -> list[UUID]:
+    return [
+        e.payload.model_dump()["speech_turn_id"]
+        for e in found
+        if e.event_type == "USER_SPEECH_STARTED"
+    ]
+
+
+async def handled(pipeline: SpeechPipeline, partials: int) -> None:
+    await until(lambda: pipeline.partials == partials)
+    await asyncio.sleep(0.01)
+
+
+async def test_speech_started_and_partials_interrupt_once_per_provider_turn() -> None:  # C
+    session, pipeline, stt, _, presentation = await with_presentation()
+    await stt.emit("SPEECH_STARTED", order=1)
+    await stt.emit("PARTIAL", "my", order=1)
+    await stt.emit("PARTIAL", "my sink", order=1)
+    await handled(pipeline, 2)
+    assert presentation.interrupts == 1
+    assert speech_starts(events(session)) == [speech_id(stt, 1)]
+    await session.end()
+
+
+async def test_first_partial_is_the_fallback_and_final_admission_is_unchanged() -> None:  # D
+    session, pipeline, stt, recorder, presentation = await with_presentation()
+    await stt.emit("PARTIAL", "the sink", order=0)
+    await stt.emit("PARTIAL", "the sink is leaking", order=0)
+    await stt.emit("FINAL", "The sink is leaking.", order=0)
+    await requests_reach(recorder, 1)
+    assert presentation.interrupts == 1  # first partial only; neither the second nor FINAL
+    found = events(session)
+    assert speech_starts(found) == [speech_id(stt, 0)]
+    names = [e.event_type for e in found]
+    assert names.index("USER_SPEECH_STARTED") < names.index("STT_FINAL")
+    [request] = recorder.requests
+    assert request.utterance == "The sink is leaking."
+    assert request.turn_id == uuid5(session.conversation_session_id, str(speech_id(stt, 0)))
+    await processed(session)
+    await session.end()
+
+
+async def test_late_speech_started_after_partial_fallback_is_not_repeated() -> None:  # E
+    session, pipeline, stt, _, presentation = await with_presentation()
+    await stt.emit("PARTIAL", "hello", order=0)
+    await stt.emit("SPEECH_STARTED", order=0)
+    await stt.emit("PARTIAL", "hello there", order=0)
+    await handled(pipeline, 2)
+    assert presentation.interrupts == 1
+    assert speech_starts(events(session)) == [speech_id(stt, 0)]
+    await session.end()
+
+
+async def test_each_newer_provider_turn_interrupts_again() -> None:  # F
+    session, pipeline, stt, recorder, presentation = await with_presentation()
+    await stt.emit("SPEECH_STARTED", order=0)
+    await stt.emit("PARTIAL", "first", order=0)
+    await stt.emit("FINAL", "First request.", order=0)
+    await requests_reach(recorder, 1)
+    await processed(session)
+    await stt.emit("SPEECH_STARTED", order=0)  # stale: that provider turn is finalized
+    await stt.emit("SPEECH_STARTED", order=1)
+    await stt.emit("FINAL", "Second request.", order=1)
+    await requests_reach(recorder, 2)
+    await processed(session)
+    assert presentation.interrupts == 2
+    assert speech_starts(events(session)) == [speech_id(stt, 0), speech_id(stt, 1)]
+    assert [r.utterance for r in recorder.requests] == ["First request.", "Second request."]
+    await session.end()
+
+
+async def test_continuation_both_interrupts_and_coalesces_independently() -> None:
+    session, pipeline, stt, recorder, presentation = await with_presentation()
+    await stt.emit("FINAL", "Wait, the water is getting close.", order=0)
+    await until(lambda: pipeline.provisional is not None)
+    await stt.emit("SPEECH_STARTED", order=1)
+    await stt.emit("PARTIAL", "through", order=1)
+    await until(lambda: pipeline.continuations == 1)
+    await stt.emit("FINAL", "through an electrical outlet.", order=1)
+    await requests_reach(recorder, 1)
+    # Presentation policy: one interruption for the resumed provider turn...
+    assert presentation.interrupts == 1
+    # ...and, separately, admission policy: one coalesced turn with the first identity.
+    [request] = recorder.requests
+    assert request.utterance == "Wait, the water is getting close. through an electrical outlet."
+    assert request.turn_id == uuid5(session.conversation_session_id, str(speech_id(stt, 0)))
+    assert pipeline.coalesced == 1 and pipeline.aborted == {}
+    await processed(session)
+    await session.end()
+
+
+@pytest.mark.parametrize("presentation", [None, "failing"])
+async def test_final_proceeds_without_or_despite_a_failing_presentation(
+    presentation: str | None,
+) -> None:  # B, J
+    session, pipeline, stt, _, recorder = await attached()
+    failing = FakePresentation(fail=True)
+    if presentation == "failing":
+        session.attach_output(failing)
+    await stt.emit("SPEECH_STARTED", order=0)
+    await stt.emit("FINAL", "The heat is not working.", order=0)
+    await requests_reach(recorder, 1)
+    assert recorder.requests[0].utterance == "The heat is not working."
+    assert speech_starts(events(session)) == [speech_id(stt, 0)]
+    assert failing.interrupts == (1 if presentation else 0)
+    assert not pipeline.closed and session.cancelled_turns == 0
+    await processed(session)
+    await session.end()
+
+
+async def test_barge_in_keeps_the_interrupting_utterance_and_speaks_the_next_response() -> None:
+    session, pipeline, stt, _, recorder = await attached()
+    gate = asyncio.Event()
+    tts, sink = FakeTTS(frames(10)), FakeSink(gate=gate, release_on_clear=True)
+    output = SpeechOutput(tts, sink, observer=session.presentation_event)
+    session.attach_output(output)
+    # Turn 1 is answered; its response is being spoken (the capture is blocked mid-stream).
+    await stt.emit("FINAL", "My AC is broken.", order=0)
+    await requests_reach(recorder, 1)
+    await processed(session)
+    await until(sink.waiting.is_set)
+    first = output.active
+    assert first is not None and not first.terminal
+    # The caller talks over it.
+    await stt.emit("SPEECH_STARTED", order=1)
+    await until(lambda: first.terminal)
+    assert first.status == OutputStatus.CANCELLED and first.code == OutputFailure.USER_INTERRUPTED
+    await stt.emit("PARTIAL", "actually", order=1)
+    await stt.emit("FINAL", "Actually, water is leaking from it.", order=1)
+    # The interrupting utterance becomes a normal application turn...
+    await requests_reach(recorder, 2)
+    await processed(session)
+    assert recorder.requests[1].utterance == "Actually, water is leaking from it."
+    assert recorder.requests[1].turn_number == 2 and session.binding.turn_number == 2
+    # ...and its authoritative response is spoken normally.
+    await until(lambda: len(output.finished) == 2 and output.active is None)
+    second = output.finished[-1]
+    assert second.status == OutputStatus.COMPLETED and second.frames_accepted == 10
+    assert second.turn_id == recorder.requests[1].turn_id and len(tts.requests) == 2
+    assert session.cancelled_turns == 0 and output.available
+    await until(lambda: session._presentation_events.empty())
+    await asyncio.sleep(0.01)
+    ended = [e.payload for e in events(session) if e.event_type == "AGENT_AUDIO_OUTPUT_ENDED"]
+    assert all(isinstance(p, AgentAudioOutputEnded) for p in ended)
+    assert [(p.model_dump()["status"], p.model_dump()["code"]) for p in ended] == [
+        ("CANCELLED", "USER_INTERRUPTED"),
+        ("COMPLETED", None),
+    ]
+    await session.end()
+    assert not relay_input_tasks()

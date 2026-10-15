@@ -65,6 +65,7 @@ class SpeechPipeline:
         self.failed = asyncio.Event()
         self.closed = False
         self.last_final = -1
+        self.last_speech_start = -1  # newest provider turn already signalled as speech start
         self.stream_id: UUID | None = None
         self.partials = self.finals = self.duplicates = self.failures = 0
         self.first_audio: float | None = None
@@ -212,13 +213,7 @@ class SpeechPipeline:
         speech_id = uuid5(event.stream_id, str(event.turn_order))
         if event.kind == "SPEECH_STARTED":
             self._continuation(event.turn_order, loop.time())
-            await self.session.emit(
-                SpeechSignal(
-                    kind="USER_SPEECH_STARTED",
-                    speech_turn_id=speech_id,
-                    audio_timestamp_ms=event.audio_timestamp_ms,
-                )
-            )
+            await self._speech_started(event, speech_id)
             return
         if event.turn_order <= self.last_final:
             if event.kind == "FINAL":
@@ -228,6 +223,7 @@ class SpeechPipeline:
         if event.kind == "PARTIAL":
             self.partials += 1
             self._continuation(event.turn_order, loop.time())
+            await self._speech_started(event, speech_id)  # fallback when none was signalled
             if self.partials == 1 and self.first_audio is not None:
                 self.log(
                     "STT_FIRST_PARTIAL",
@@ -281,6 +277,22 @@ class SpeechPipeline:
             "STT_FINAL_PROVISIONAL",
             segments=len(self.provisional.segments) if self.provisional else 0,
             grace_ms=self.admission_grace * 1000,
+        )
+
+    async def _speech_started(self, event: STTEvent, speech_id: UUID) -> None:
+        """One logical caller-speech start per provider turn: SPEECH_STARTED, or else the
+        first PARTIAL of that turn. A repeat, late or stale signal for a turn that was
+        already signalled or finalized is ignored. This is presentation policy only; the
+        admission continuation is handled separately by _continuation()."""
+        if event.turn_order <= max(self.last_speech_start, self.last_final):
+            return
+        self.last_speech_start = event.turn_order
+        await self.session.user_speech_started(
+            SpeechSignal(
+                kind="USER_SPEECH_STARTED",
+                speech_turn_id=speech_id,
+                audio_timestamp_ms=event.audio_timestamp_ms,
+            )
         )
 
     def _continuation(self, turn_order: int, now: float) -> None:

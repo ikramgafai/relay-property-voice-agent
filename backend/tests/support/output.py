@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from uuid import UUID
 
 from app.providers.tts.schemas import SpeechRequest
@@ -93,6 +93,43 @@ class FakeSink:
 
     async def close(self) -> None:
         self.closes += 1
+        self.closed = True
+
+
+class FakePresentation:
+    """SpeechPresentation double: records presentations and interrupt requests.
+
+    ``targeted`` is what interrupt() reports; ``fail`` makes it raise; ``on_interrupt`` runs
+    inside the call, so a test can observe what had already happened at that moment."""
+
+    def __init__(
+        self,
+        *,
+        targeted: bool = True,
+        fail: bool = False,
+        on_interrupt: Callable[[], None] | None = None,
+    ) -> None:
+        self.available = True
+        self.targeted, self.fail, self.on_interrupt = targeted, fail, on_interrupt
+        self.interrupts = 0
+        self.presented: list[tuple[UUID, str]] = []
+        self.started = self.closed = False
+
+    def start(self) -> None:
+        self.started = True
+
+    def present(self, turn_id: UUID, text: str) -> None:
+        self.presented.append((turn_id, text))
+
+    def interrupt(self) -> bool:
+        self.interrupts += 1
+        if self.on_interrupt is not None:
+            self.on_interrupt()
+        if self.fail:
+            raise RuntimeError("presentation interrupt failed")
+        return self.targeted
+
+    async def close(self) -> None:
         self.closed = True
 
 

@@ -19,6 +19,7 @@ from app.realtime.schemas import (
     Binding,
     ClientEvent,
     ServerEvent,
+    SpeechSignal,
     Start,
     TextTurn,
 )
@@ -27,7 +28,7 @@ from app.realtime.spoken import spoken_text
 from app.routing.schemas import DecisionType, ReasonCode, RoutingDecision
 from pydantic import SecretStr
 
-from tests.support.output import FakeSink
+from tests.support.output import FakePresentation, FakeSink
 from tests.support.speech import FakeTTS
 
 REFERENCE = "dd51053d-f8d0-4619-a8dd-c700e3728e59"
@@ -453,3 +454,191 @@ async def test_lifespan_builds_tts_only_when_enabled_on_shared_client() -> None:
         assert provider._client is enabled.state.http_client
         assert provider.voice_id == "Voice123" and "fake-tts-key" not in repr(provider)
     assert enabled.state.http_client.is_closed
+
+
+# --- Phase 10: barge-in policy ------------------------------------------------------------------
+
+
+def speech_start(audio_timestamp_ms: int | None = None) -> SpeechSignal:
+    return SpeechSignal(
+        kind="USER_SPEECH_STARTED", speech_turn_id=uuid4(), audio_timestamp_ms=audio_timestamp_ms
+    )
+
+
+class Blocking:
+    """A processor whose business turn stays running until released."""
+
+    def __init__(self) -> None:
+        self.gate, self.entered = asyncio.Event(), asyncio.Event()
+
+    async def process(self, request: AgentTurnRequest) -> AgentTurnResult:
+        self.entered.set()
+        await self.gate.wait()
+        return result(request)
+
+
+def captured_logs(session: RealtimeSession) -> list[tuple[str, dict[str, object]]]:
+    logs: list[tuple[str, dict[str, object]]] = []
+    session.log = lambda event, **fields: logs.append((event, fields))  # type: ignore[method-assign]
+    return logs
+
+
+async def test_speech_start_requests_interruption_and_emits_signal() -> None:  # A
+    session = await started(Scripted(result))
+    presentation = FakePresentation()
+    session.attach_output(presentation)
+    logs = captured_logs(session)
+    signal = speech_start(audio_timestamp_ms=1200)
+    assert await session.user_speech_started(signal) is True
+    assert presentation.interrupts == 1
+    [event] = drain(session)
+    assert event.event_type == "USER_SPEECH_STARTED" and event.payload == signal
+    assert session.cancelled_turns == 0 and session.state.value == "IDLE"
+    barge = [fields for name, fields in logs if name == "REALTIME_BARGE_IN_REQUESTED"]
+    assert barge == [{"speech_turn_id": str(signal.speech_turn_id), "presentation_targeted": True}]
+    await session.end()
+
+
+async def test_presentation_interrupt_failure_is_isolated() -> None:  # B
+    processor = Scripted(result)
+    session = await started(processor)
+    presentation = FakePresentation(fail=True)
+    session.attach_output(presentation)
+    logs = captured_logs(session)
+    assert await session.user_speech_started(speech_start()) is False
+    assert presentation.interrupts == 1
+    assert kinds(drain(session)) == ["USER_SPEECH_STARTED"]
+    assert "SPEECH_PRESENTATION_INTERRUPT_FAILED" in [name for name, _ in logs]
+    await turn(session)  # the session keeps working, and the next response is presented
+    assert len(processor.requests) == 1 and len(presentation.presented) == 1
+    assert "AGENT_RESPONSE" in kinds(drain(session)) and session.cancelled_turns == 0
+    await session.end()
+
+
+async def test_speech_start_never_cancels_the_active_business_turn() -> None:  # G
+    processor = Blocking()
+    session_id = uuid4()
+    session = RealtimeSession(session_id, Binding(revision=1, turn_number=0), processor)
+    await session.handle(
+        ClientEvent(session_id=session_id, sequence=1, event_type="SESSION_START", payload=Start())
+    )
+    presentation = FakePresentation()
+    session.attach_output(presentation)
+
+    async def forbidden(turn_id: UUID) -> None:
+        raise AssertionError("barge-in must never cancel a business turn")
+
+    session.cancel = forbidden  # type: ignore[method-assign]
+    turn_id = uuid4()
+    payload = TextTurn(turn_id=turn_id, turn_number=1, expected_revision=1, utterance="Hi.")
+    await session.handle(
+        ClientEvent(
+            session_id=session_id,
+            sequence=2,
+            event_type="CLIENT_TEXT_TURN",
+            turn_id=turn_id,
+            payload=payload,
+        )
+    )
+    await processor.entered.wait()
+    task = session.active_task
+    assert task is not None
+    await session.user_speech_started(speech_start())
+    await asyncio.sleep(0)
+    assert presentation.interrupts == 1
+    assert session.active_task is task and not task.done() and task.cancelling() == 0
+    assert session.active_turn_id == turn_id and session.binding.turn_number == 0
+    processor.gate.set()
+    await task
+    assert session.binding.turn_number == 1 and session.cancelled_turns == 0
+    assert "AGENT_RESPONSE" in kinds(drain(session))
+    assert presentation.presented == [(turn_id, "How can I help?")]
+    await session.end()
+
+
+async def test_speech_start_without_presentation_still_emits() -> None:  # J
+    session = await started(Scripted(result))
+    logs = captured_logs(session)
+    assert await session.user_speech_started(speech_start()) is False
+    assert kinds(drain(session)) == ["USER_SPEECH_STARTED"]
+    assert "REALTIME_BARGE_IN_REQUESTED" not in [name for name, _ in logs]
+    await turn(session)
+    await session.end()
+
+
+async def test_idle_presentation_is_still_asked_to_interrupt() -> None:  # K
+    session = await started(Scripted(result))
+    presentation = FakePresentation(targeted=False)
+    session.attach_output(presentation)
+    assert await session.user_speech_started(speech_start()) is False
+    assert presentation.interrupts == 1  # it may still owe a native clear
+    await session.end()
+
+
+async def test_idle_real_output_clears_audio_already_accepted() -> None:  # K
+    session = await started(Scripted(result))
+    sink = FakeSink()
+    output = attach(session, FakeTTS(frames(3)), sink)
+    await turn(session)
+    await settle_output(output, session)
+    assert output.finished[-1].status.value == "COMPLETED" and sink.clears == 0
+    assert await session.user_speech_started(speech_start()) is False
+    for _ in range(100):
+        if sink.clears:
+            break
+        await asyncio.sleep(0)
+    assert sink.clears == 1 and output.finished[-1].status.value == "COMPLETED"
+    await session.end()
+
+
+async def test_interrupt_is_requested_before_the_outbound_event_is_queued() -> None:
+    session_id = uuid4()
+    session = RealtimeSession(
+        session_id,
+        Binding(revision=1, turn_number=0),
+        Scripted(result),
+        queue_capacity=1,
+        queue_timeout=5,
+    )
+    seen: list[list[str]] = []
+    presentation = FakePresentation(
+        on_interrupt=lambda: seen.append(
+            [event.event_type for event in list(session.outbound.items._queue)]  # type: ignore[attr-defined]
+        )
+    )
+    session.attach_output(presentation)
+    # A client that is not reading: the single outbound slot is already taken.
+    await session.emit(SpeechSignal(kind="USER_SPEECH_ENDED", speech_turn_id=uuid4()))
+    pending = asyncio.create_task(session.user_speech_started(speech_start()))
+    for _ in range(20):
+        await asyncio.sleep(0)
+    # The local interrupt already happened; the outbound event is still waiting for room.
+    assert presentation.interrupts == 1 and seen == [["USER_SPEECH_ENDED"]]
+    assert not pending.done()
+    assert kinds(drain(session)) == ["USER_SPEECH_ENDED"]
+    assert await asyncio.wait_for(pending, 1) is True
+    assert kinds(drain(session)) == ["USER_SPEECH_STARTED"]
+    await session.end()
+
+
+async def test_barge_in_on_real_output_reports_user_interrupted() -> None:
+    session = await started(Scripted(result))
+    gate = asyncio.Event()
+    sink = FakeSink(gate=gate, release_on_clear=True)
+    output = attach(session, FakeTTS(frames(10)), sink)
+    turn_id = uuid4()
+    await turn(session, turn_id)
+    for _ in range(10_000):
+        if sink.waiting.is_set():
+            break
+        await asyncio.sleep(0)
+    assert await session.user_speech_started(speech_start()) is True
+    await settle_output(output, session)
+    ended_events = [e for e in drain(session) if e.event_type == "AGENT_AUDIO_OUTPUT_ENDED"]
+    [ended] = ended_events
+    payload = ended.payload
+    assert isinstance(payload, AgentAudioOutputEnded) and ended.turn_id == turn_id
+    assert payload.status == "CANCELLED" and payload.code == "USER_INTERRUPTED"
+    assert output.available and session.cancelled_turns == 0
+    await session.end()
+    assert not relay_output_tasks()
