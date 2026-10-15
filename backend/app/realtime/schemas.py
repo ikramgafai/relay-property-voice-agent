@@ -193,6 +193,7 @@ class AgentAudioOutputEnded(Payload):
             "MEDIA_ENDED",
             "OUTPUT_UNAVAILABLE",
             "SESSION_ENDED",
+            "USER_INTERRUPTED",
         ]
         | None
     ) = None

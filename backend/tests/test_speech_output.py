@@ -14,8 +14,9 @@ from app.realtime.output import (
     SpeechOutput,
     SpeechOutputRecord,
 )
+from app.realtime.presentation import PresentationEvent
 
-from tests.support.output import FakeSink, StaleOutputError, SteppedTTS
+from tests.support.output import FakeSink, StaleOutputError, SteppedTTS, StubbornTTS
 from tests.support.speech import FakeTTS
 
 FRAME = 960  # 20 ms at 24 kHz mono PCM16
@@ -488,4 +489,365 @@ async def test_independent_outputs_run_concurrently() -> None:
     assert b"".join(f.data for f in sink_a.frames) == b"".join(first_data)
     assert b"".join(f.data for f in sink_b.frames) == b"".join(second_data)
     await asyncio.gather(a.close(), b.close())
+    assert not relay_tasks()
+
+
+# --- Phase 10: cooperative user interruption --------------------------------------------
+
+
+def user_interrupted(record: SpeechOutputRecord) -> bool:
+    return record.status == OutputStatus.CANCELLED and record.code == OutputFailure.USER_INTERRUPTED
+
+
+def ended_events(lifecycle: list[PresentationEvent], record: SpeechOutputRecord) -> int:
+    return sum(
+        e.kind == "ENDED" and e.speech_output_id == record.speech_output_id for e in lifecycle
+    )
+
+
+def clear_indexes(sink: FakeSink) -> list[int]:
+    return [index for index, (op, _) in enumerate(sink.events) if op == "clear"]
+
+
+async def idle(output: SpeechOutput) -> None:
+    await until(lambda: output.active is None and output.pending is None)
+    await settle()
+
+
+async def test_interrupt_never_cancels_a_blocked_capture() -> None:
+    gate = asyncio.Event()
+    provider, sink = FakeTTS(frame_chunks(60)), FakeSink(gate=gate, release_on_clear=True)
+    lifecycle: list[PresentationEvent] = []
+    logs: list[tuple[str, dict[str, object]]] = []
+    output = started(
+        provider,
+        sink,
+        observer=lifecycle.append,
+        log=lambda event, **fields: logs.append((event, fields)),
+    )
+    first = output.present(uuid4(), "First words.")
+    assert first is not None
+    await until(lambda: sink.waiting.is_set() and provider.yielded == BUFFER_FRAMES + 2)
+    await settle()
+    old = first.speech_output_id
+    assert output.interrupt() is True
+    # Non-blocking: nothing settled yet; clearing belongs to the supervisor, not the caller.
+    assert not first.terminal and sink.clears == 0 and not gate.is_set()
+    first = await ended(first)
+    assert user_interrupted(first) and ended_events(lifecycle, first) == 1
+    # The first clear released the blocked capture, which returned naturally; the second
+    # clear followed once it settled; no further frame of the old output was captured.
+    assert not sink.cancelled(old)
+    assert sink.events == [("capture", old), ("clear", None), ("captured", old), ("clear", None)]
+    assert first.clear_attempts == 2 and first.clear_failures == 0
+    assert first.frames_accepted == 1 and first.frames_discarded == BUFFER_FRAMES
+    assert first.output_drained is None and not first.producer_cancel_timeout
+    assert provider.outcomes == ["CLOSED"]
+    assert output.available and not sink.closed
+    second = await ended(output.present(uuid4(), "Second words."))
+    assert second.status == OutputStatus.COMPLETED and second.frames_accepted == 60
+    start = sink.events.index(("capture", second.speech_output_id))
+    assert all(output_id == second.speech_output_id for _, output_id in sink.events[start:])
+    assert [output_id for output_id, _ in sink.accepted] == [old] + [second.speech_output_id] * 60
+    names = [event for event, _ in logs]
+    assert names.count("SPEECH_OUTPUT_INTERRUPT_REQUESTED") == 1
+    assert names.count("SPEECH_OUTPUT_INTERRUPTED") == 1
+    assert "First words." not in str(logs) and "Second words." not in str(logs)
+    await output.close()
+    assert not relay_tasks()
+
+
+async def test_interrupt_fence_does_not_reach_an_output_presented_afterwards() -> None:
+    gate = asyncio.Event()
+    provider, sink = FakeTTS(frame_chunks(30)), FakeSink(gate=gate, release_on_clear=True)
+    later: list[SpeechOutputRecord] = []
+    snapshots: list[tuple[OutputStatus, int, int]] = []
+
+    def observe(event: PresentationEvent) -> None:
+        if event.kind == "ENDED" and later and event.speech_output_id != later[0].speech_output_id:
+            snapshots.append((later[0].status, len(provider.requests), sink.clears))
+
+    output = started(provider, sink, observer=observe)
+    a = output.present(uuid4(), "A.")
+    await until(sink.waiting.is_set)
+    assert output.interrupt() is True
+    b = output.present(uuid4(), "B.")  # presented after interrupt() returned
+    assert a is not None and b is not None and output.pending is b
+    later.append(b)
+    a, b = await ended(a), await ended(b)
+    assert user_interrupted(a) and b.status == OutputStatus.COMPLETED
+    # When A ended, both of its clears had run and B was still pending, never synthesized.
+    assert snapshots == [(OutputStatus.PENDING, 1, 2)]
+    assert b.frames_accepted == 30 and b.clear_attempts == 0 and b.code is None
+    assert max(clear_indexes(sink)) < sink.events.index(("capture", b.speech_output_id))
+    assert sink.clears == 2 and not sink.cancelled(a.speech_output_id)
+    await output.close()
+    assert not relay_tasks()
+
+
+async def test_a_pending_output_is_cancelled_before_tts() -> None:  # A
+    provider, sink = FakeTTS(frame_chunks(2)), FakeSink()
+    output = SpeechOutput(provider, sink)  # supervisor not started: the job stays pending
+    record = output.present(uuid4(), "Pending.")
+    assert record is not None and output.pending is record
+    assert output.interrupt() is True
+    assert user_interrupted(record) and output.pending is None  # synchronously terminal
+    output.start()
+    after = await ended(output.present(uuid4(), "After."))
+    assert after.status == OutputStatus.COMPLETED
+    assert [r.text for r in provider.requests] == ["After."]
+    assert clear_indexes(sink)[0] < sink.events.index(("capture", after.speech_output_id))
+    await output.close()
+
+
+async def test_active_and_pending_are_both_interrupted_not_superseded() -> None:  # A
+    gate = asyncio.Event()
+    provider, sink = FakeTTS(frame_chunks(3)), FakeSink(gate=gate, release_on_clear=True)
+    output = started(provider, sink)
+    active = output.present(uuid4(), "Active.")
+    await until(sink.waiting.is_set)
+    pending = output.present(uuid4(), "Pending.")
+    assert output.interrupt() is True
+    assert pending is not None and user_interrupted(pending)
+    assert user_interrupted(await ended(active))
+    await idle(output)
+    assert [r.text for r in provider.requests] == ["Active."]
+    await output.close()
+
+
+async def test_interrupt_during_synthesis_before_first_frame() -> None:  # B
+    provider, sink = FakeTTS(frame_chunks(3), gate=asyncio.Event()), FakeSink()
+    lifecycle: list[PresentationEvent] = []
+    logs: list[tuple[str, dict[str, object]]] = []
+    output = started(
+        provider,
+        sink,
+        observer=lifecycle.append,
+        log=lambda event, **fields: logs.append((event, fields)),
+    )
+    record = output.present(uuid4(), "Hello.")
+    await until(lambda: bool(provider.requests))
+    await settle()
+    assert output.interrupt() is True
+    record = await ended(record)
+    assert user_interrupted(record) and provider.outcomes == ["CLOSED"]
+    assert sink.accepted == [] and record.first_frame_accepted_by_sink is None
+    assert [e.kind for e in lifecycle] == ["ENDED"]  # never STARTED
+    assert record.clear_attempts == 2
+    fields = next(f for event, f in logs if event == "SPEECH_OUTPUT_INTERRUPTED")
+    assert fields == {
+        "speech_output_id": str(record.speech_output_id),
+        "turn_id": str(record.turn_id),
+        "previous_status": "SYNTHESIZING",
+        "accepted_audio_ms": 0.0,
+        "frames_discarded": 0,
+        "clear_attempts": 2,
+        "clear_failures": 0,
+        "producer_cancel_timeout": False,
+        "output_available": True,
+    }
+    await output.close()
+
+
+async def test_frames_queued_after_synthesis_finished_are_discarded() -> None:  # C, F
+    gate = asyncio.Event()
+    provider, sink = FakeTTS(frame_chunks(5)), FakeSink(gate=gate, release_on_clear=True)
+    output = started(provider, sink)
+    record = output.present(uuid4(), "Hello.")
+    await until(lambda: sink.waiting.is_set() and provider.outcomes == ["COMPLETED"])
+    assert record is not None and record.tts_completed is not None
+    assert output.interrupt() is True  # interrupt wins: output was not drained yet
+    record = await ended(record)
+    assert user_interrupted(record) and record.output_drained is None
+    assert record.frames_discarded == 4 and record.frames_accepted == 1
+    assert len(sink.accepted) == 1
+    await output.close()
+
+
+async def test_repeated_interrupt_is_idempotent() -> None:  # D
+    gate = asyncio.Event()
+    provider, sink = FakeTTS(frame_chunks(5)), FakeSink(gate=gate, release_on_clear=True)
+    lifecycle: list[PresentationEvent] = []
+    logs: list[str] = []
+    output = started(
+        provider,
+        sink,
+        observer=lifecycle.append,
+        log=lambda event, **fields: logs.append(event),
+    )
+    record = output.present(uuid4(), "Hello.")
+    await until(sink.waiting.is_set)
+    assert output.interrupt() is True
+    assert output.interrupt() is False
+    assert output.interrupt() is False
+    record = await ended(record)
+    await idle(output)
+    assert user_interrupted(record) and ended_events(lifecycle, record) == 1
+    assert sink.clears == 2 and logs.count("SPEECH_OUTPUT_INTERRUPTED") == 1
+    await output.close()
+
+
+async def test_natural_completion_wins_the_race() -> None:  # E
+    provider, sink = FakeTTS(frame_chunks(3)), FakeSink()
+    output = started(provider, sink)
+    record = output.present(uuid4(), "Hello.")
+    await until(lambda: record is not None and record.output_drained is not None)
+    assert output.interrupt() is False  # every frame was already accepted
+    record = await ended(record)
+    assert record.status == OutputStatus.COMPLETED and record.code is None
+    await until(lambda: sink.clears == 1)  # accepted audio is still silenced natively
+    await idle(output)
+    assert sink.clears == 1 and record.clear_attempts == 0
+    await output.close()
+
+
+@pytest.mark.parametrize("interrupt_first", [True, False])
+async def test_interrupt_and_close_race(interrupt_first: bool) -> None:  # G
+    gate = asyncio.Event()  # clearing does not release this capture
+    provider, sink = FakeTTS(frame_chunks(5)), FakeSink(gate=gate)
+    output = started(provider, sink)
+    record = output.present(uuid4(), "Hello.")
+    await until(sink.waiting.is_set)
+    if interrupt_first:
+        assert output.interrupt() is True
+        await until(lambda: sink.clears == 1)  # settlement now waits for the capture
+        await output.close()
+    else:
+        closing = asyncio.create_task(output.close())
+        await asyncio.sleep(0)
+        assert output.interrupt() is False
+        await closing
+    record = await ended(record)
+    # First terminal wins: teardown arrived before the interrupted record settled.
+    assert record.status == OutputStatus.CANCELLED and record.code == OutputFailure.SESSION_ENDED
+    assert sink.closes == 1 and output.interrupt() is False
+    assert not relay_tasks()
+
+
+async def test_idle_interrupt_requests_a_native_clear() -> None:  # H
+    provider, sink = FakeTTS(frame_chunks(2)), FakeSink()
+    output = started(provider, sink)
+    first = await ended(output.present(uuid4(), "Hello."))
+    await idle(output)
+    assert sink.clears == 0
+    assert output.interrupt() is False
+    await until(lambda: sink.clears == 1)
+    assert first.status == OutputStatus.COMPLETED
+    await output.close()
+
+
+async def test_output_presented_after_an_idle_interrupt_is_unaffected() -> None:  # I
+    provider, sink = FakeTTS(frame_chunks(4)), FakeSink()
+    output = started(provider, sink)
+    await ended(output.present(uuid4(), "Earlier."))
+    await idle(output)
+    assert output.interrupt() is False
+    after = await ended(output.present(uuid4(), "After."))  # presented right after the request
+    assert after.status == OutputStatus.COMPLETED and after.frames_accepted == 4
+    assert after.clear_attempts == 0 and sink.clears == 1
+    assert max(clear_indexes(sink)) < sink.events.index(("capture", after.speech_output_id))
+    await output.close()
+
+
+async def test_clear_failure_without_a_blocked_capture() -> None:  # J
+    provider, sink = SteppedTTS(), FakeSink(fail_clear=True)
+    logs: list[str] = []
+    output = started(provider, sink, log=lambda event, **fields: logs.append(event))
+    record = output.present(uuid4(), "Hello.")
+    await until(lambda: bool(provider.requests))
+    await settle()
+    assert output.interrupt() is True
+    record = await ended(record)
+    assert user_interrupted(record)
+    assert record.clear_attempts == record.clear_failures == 2
+    assert logs.count("SPEECH_OUTPUT_CLEAR_FAILED") == 2
+    assert output.available  # nothing was blocked, so the transport was never degraded
+    provider.chunks.put_nowait(pcm(480))
+    provider.chunks.put_nowait(None)
+    later = await ended(output.present(uuid4(), "Later."))
+    assert later.status == OutputStatus.COMPLETED and later.frames_accepted == 1
+    await output.close()
+
+
+async def test_clear_failure_with_a_blocked_capture_degrades_visibly() -> None:  # K
+    gate = asyncio.Event()
+    provider = FakeTTS(frame_chunks(5))
+    sink = FakeSink(gate=gate, release_on_clear=True, fail_clear=True)
+    logs: list[str] = []
+    output = started(
+        provider, sink, capture_timeout=0.05, log=lambda event, **fields: logs.append(event)
+    )
+    record = output.present(uuid4(), "Hello.")
+    await until(sink.waiting.is_set)
+    assert output.interrupt() is True
+    record = await ended(record)
+    # The presentation result is still the user's interruption...
+    assert user_interrupted(record) and record.clear_failures == 2
+    # ...but the capture was never released and hit the existing capture timeout, so the
+    # transport is reported as degraded rather than silently reused.
+    assert sink.cancelled(record.speech_output_id)
+    assert not output.available and "SPEECH_OUTPUT_TRANSPORT_DEGRADED" in logs
+    later = await ended(output.present(uuid4(), "Later."))
+    assert later.status == OutputStatus.FAILED and later.code == OutputFailure.OUTPUT_UNAVAILABLE
+    await output.close()
+    assert not relay_tasks()
+
+
+async def test_slow_producer_cancellation_stays_owned_and_cannot_enqueue() -> None:  # L
+    provider = StubbornTTS(pcm(480), late=frame_chunks(3, 5000), chunks=frame_chunks(2, 9000))
+    sink = FakeSink()
+    logs: list[str] = []
+    output = started(
+        provider,
+        sink,
+        producer_cancel_timeout=0.05,
+        log=lambda event, **fields: logs.append(event),
+    )
+    first = output.present(uuid4(), "First.")
+    await until(lambda: len(sink.accepted) == 1)
+    await settle()
+    assert output.interrupt() is True
+    first = await ended(first)
+    assert user_interrupted(first) and first.producer_cancel_timeout
+    assert provider.swallowed == 1 and "SPEECH_OUTPUT_PRODUCER_RETIRED" in logs
+    assert len(output._retired) == 1 and relay_tasks()  # still alive, still owned
+    second = await ended(output.present(uuid4(), "Second."))  # not blocked by it
+    assert second.status == OutputStatus.COMPLETED and second.frames_accepted == 2
+    provider.release.set()
+    await until(lambda: not output._retired)
+    # It tried to keep producing and was refused before a single frame was queued.
+    assert provider.late_yields == 1 and provider.closed_after_release
+    assert [output_id for output_id, _ in sink.accepted].count(first.speech_output_id) == 1
+    await output.close()
+    assert not relay_tasks()
+
+
+async def test_close_cancels_retired_producers_without_leaks() -> None:  # M
+    before = asyncio.all_tasks()
+    provider = StubbornTTS(pcm(480), late=frame_chunks(1), chunks=frame_chunks(1))
+    sink = FakeSink()
+    output = started(provider, sink, producer_cancel_timeout=0.05)
+    first = output.present(uuid4(), "First.")
+    await until(lambda: len(sink.accepted) == 1)
+    await settle()
+    assert output.interrupt() is True
+    assert user_interrupted(await ended(first))
+    assert output._retired
+    await output.close()
+    assert not output._retired and provider.late_yields == 0
+    assert not relay_tasks() and asyncio.all_tasks() <= before | {asyncio.current_task()}
+
+
+async def test_speech_stays_usable_after_an_interruption() -> None:  # N
+    gate = asyncio.Event()
+    provider, sink = FakeTTS(frame_chunks(8)), FakeSink(gate=gate, release_on_clear=True)
+    output = started(provider, sink)
+    first = output.present(uuid4(), "One.")
+    await until(sink.waiting.is_set)
+    assert output.interrupt() is True
+    assert user_interrupted(await ended(first))
+    records = [await ended(output.present(uuid4(), text)) for text in ("Two.", "Three.")]
+    assert all(r.status == OutputStatus.COMPLETED and r.frames_accepted == 8 for r in records)
+    assert output.available and sink.clears == 2
+    await output.close()
     assert not relay_tasks()
