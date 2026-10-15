@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted in Phase 0. The durable/ephemeral split is implemented (Phase 6 checkpoints, Phase 7 realtime task ownership and cancellation). Presentation cancellation (TTS, playback, barge-in) is not implemented; there is no audio output yet.
+Accepted in Phase 0. The durable/ephemeral split is implemented (Phase 6 checkpoints, Phase 7 realtime task ownership and cancellation). Speech output exists since Phase 9 and its failures never touch durable state; presentation cancellation on barge-in is not implemented yet (Phase 10).
 
 ## Context
 

@@ -19,10 +19,13 @@ text. For current behavior, read the source and the subsystem documents in `docs
 | 7 | RealtimeSession, typed WebSocket events, cancellation, bounded output | 248 | [phase-7](phase-7-verification.md) |
 | 8 | LiveKit input, AssemblyAI streaming STT, speech identity, media tokens | 272 | [phase-8](phase-8-verification.md) |
 | 8.1 | Pending-reply interpretation, safety-critical downgrade protection, ADR 008 | 310 | [phase-8.1](phase-8.1-verification.md) |
+| 9 | Speech output (ElevenLabs, LiveKit agent audio, browser playback), endpointing, guarded admission | 530 | [phase-9](phase-9-verification.md) |
 
 Counts are successive totals of one growing suite, not separate suites.
 
-## Current evidence (2026-10-14)
+## Phase 8.1 evidence (2026-10-14)
+
+Superseded for current status by [Phase 9 verification](phase-9-verification.md).
 
 | Level | What it proves | Result |
 | --- | --- | --- |
@@ -44,7 +47,8 @@ authoritative:
 - ADRs 001–006 were accepted in Phase 0 before implementation. Each ADR's status line now
   records where it was implemented.
 - The interruption story in the scope and architecture documents (barge-in during audible
-  playback) is a target. Speech tests today process sequential final input; there is no TTS.
+  playback) is a target. Relay speaks since Phase 9, but barge-in is not implemented, so the hazard
+  update is a subsequent turn.
   `EM-1042` in older prose is illustrative; incident identifiers are UUIDs.
 - The conceptual state/event tables include future states, events and envelope field names.
   `backend/app/realtime/schemas.py` defines the actual wire contract; there is no event table.

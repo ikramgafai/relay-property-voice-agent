@@ -5,8 +5,9 @@ disconnect (STT_FAILED, fresh stream, no partial promotion), model timeout and i
 (abstain or clarify, no automatic retry), invalid tool arguments, database failure and
 UNKNOWN_OUTCOME reconciliation, duplicate actions, control/media disconnect with durable
 reconnect, and ambiguous routing (clarify or abstain; no clarification budget yet). Not
-implemented: TTS failure and barge-in, because there is no audio output; external
-PMS reconciliation, because there is no external PMS. Event names below are conceptual; the
+implemented since Phase 9: TTS failure (text and business results stay intact; output reports
+FAILED with a safe code). Not implemented: barge-in (Phase 10); external PMS reconciliation, because
+there is no external PMS. Event names below are conceptual; the
 implemented wire events are listed in [realtime](realtime.md) and [speech](speech.md).
 
 All retries must be bounded. Preserve confirmed business outcomes and avoid claiming success for

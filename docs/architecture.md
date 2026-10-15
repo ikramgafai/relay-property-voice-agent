@@ -6,8 +6,8 @@ This architecture was accepted in Phase 0 and implemented incrementally. As of P
 property context, constrained routing, durable workflows, trusted local tools,
 [text-turn orchestration](orchestration.md), [realtime sessions](realtime.md),
 [speech input](speech.md) and [pending-reply interpretation](decisions/008-pending-reply-interpretation.md)
-are implemented. TTS, playback, barge-in, external PMS integration and live handoff delivery are
-not. The "Concrete Phase N composition" sections at the end record how each phase mapped onto
+are implemented, and since Phase 9 speech output (TTS, LiveKit agent audio, browser playback) and
+guarded speech admission. Barge-in, external PMS integration and live handoff delivery are not. The "Concrete Phase N composition" sections at the end record how each phase mapped onto
 this design; sections that describe target behavior say so.
 
 1. Resolve caller → property → unit/contact context → enabled services → route → workflow.
@@ -55,7 +55,7 @@ this design; sections that describe target behavior say so.
 | `tools/` | Schema-validated backend functions for maintenance, emergency, leasing, and handoff; a provider-neutral operations adapter (implemented locally in `db/`); idempotent business writes. | Checks property, resource references, workflow eligibility, and arguments before effects; returns structured outcomes. |
 | `providers/` | Normalized provider interfaces and adapter composition. | Vendor formats, SDKs, and provider errors do not leak into business modules. |
 | `providers/stt/` | Audio-to-transcript streams and partial/final/error normalization. | Partial text is not a durable command or authorization for a write. |
-| `providers/tts/` | Reserved, empty. Planned: text-to-audio streams, cancellation, and stream completion/failure. | Audio generation completion is distinct from browser playback completion. |
+| `providers/tts/` | Provider-neutral streaming TTS protocol and the ElevenLabs HTTP streaming adapter (`pcm_24000`). | Audio generation completion is distinct from browser playback completion. |
 | `providers/llm/` | One-shot structured model calls (routing proposals, pending-reply interpretation, optional phrasing choice) with timeouts and normalized errors. No streaming. | No provider-managed execution of backend tools. |
 | `providers/embeddings/` | Reserved, empty. A possible future embedding abstraction. | Reserved; no embedding provider or retrieval system is required by V1. |
 | `db/` | Async sessions, property/workflow/operational models, repository and local operations adapters, audit transactions and seeds; migrations in `backend/migrations/`. | Implements storage and authorized local mutations behind tool protocols; no routing or model interpretation. |
@@ -71,7 +71,7 @@ this design; sections that describe target behavior say so.
 
 The composition root wires interfaces to adapters and repositories. API and realtime modules receive browser input, supervise tasks, and submit turns to TurnOrchestrator. Property resolution gates the router. The router proposes an eligible service; the workflow layer checks transitions and required context and declares any ActionRequest. Workflow policy authorizes the operation, the tool validates its input and target context, and the local operations adapter executes it. The tool's verified committed result updates workflow/conversation state before the response reports success.
 
-Provider dependencies flow through abstractions: STT is used by realtime speech, and the model provider by routing (with only the eligible catalog) and by the agent layer for reply interpretation and optional phrasing. TTS is planned for realtime presentation; embeddings have no consumer. Business modules do not import vendor SDKs. Phase 2 places the ORM-free repository protocol with its consumer in `property/`, implemented by `db/repository.py`. Persistence imports domain values but never invokes context orchestration. Phase 4 workflows and Phase 5 tools likewise own explicit ORM-free protocols implemented by database adapters.
+Provider dependencies flow through abstractions: STT is used by realtime speech, and the model provider by routing (with only the eligible catalog) and by the agent layer for reply interpretation and optional phrasing. TTS is used by realtime presentation (`SpeechOutput`); embeddings have no consumer. Business modules do not import vendor SDKs. Phase 2 places the ORM-free repository protocol with its consumer in `property/`, implemented by `db/repository.py`. Persistence imports domain values but never invokes context orchestration. Phase 4 workflows and Phase 5 tools likewise own explicit ORM-free protocols implemented by database adapters.
 
 Realtime owns scheduling and cancellation, workflows own business decisions, tools own external/business mutations, and repositories own storage mechanics. Conversational interpretation cannot bypass this chain.
 
@@ -107,7 +107,7 @@ Human handoff is a structured tool action. It snapshots property, resident/conta
 
 ## Provider abstractions
 
-Implemented protocols: `StreamingSTTProvider` (open, send audio, receive partial/final/error events, update context, close), `MediaAudioSource` for LiveKit input, and one-shot structured model protocols (`RoutingModelProvider`, `TurnInterpretationProvider`, `PhrasingProvider`) with timeouts and normalized errors. Model calls do not stream tokens. Adapter tests cover malformed output, refusals, timeouts and stream cleanup. Planned: a streaming TTS protocol emitting audio chunks with explicit completion and cancellation. Embeddings remain unspecified.
+Implemented protocols: `StreamingSTTProvider` (open, send audio, receive partial/final/error events, update context, close), `MediaAudioSource` for LiveKit input, and one-shot structured model protocols (`RoutingModelProvider`, `TurnInterpretationProvider`, `PhrasingProvider`) with timeouts and normalized errors. Model calls do not stream tokens. Adapter tests cover malformed output, refusals, timeouts and stream cleanup. Since Phase 9: `StreamingTTSProvider` (one cancellable async PCM stream per request) and `MediaAudioSink` (connect, capture with backpressure, clear, close) for LiveKit output. Embeddings remain unspecified.
 
 ## Application state versus realtime execution state
 
@@ -123,7 +123,7 @@ Application state is persisted as required for recovery; realtime state is recon
 
 ## Barge-in and committed effects
 
-Target design; not implemented. There is no TTS or playback yet (see [roadmap](roadmap.md)).
+Target design for Phase 10; not implemented. Speech output exists, but nothing interrupts it yet (see [roadmap](roadmap.md)).
 
 On detected user speech during SPEAKING, record USER_INTERRUPTED, transition through INTERRUPTED, stop browser playback/flush queued audio, cancel TTS, and cancel any now-unnecessary model generation. Advance the turn/generation identifier and reject late chunks or stale proposals. Capture the interrupting audio while cancellation is processed so the beginning of the new utterance is not lost, then listen and process its final transcript.
 
@@ -162,7 +162,7 @@ Recorded in Phase 0. Resolutions since then are noted inline.
 | Decision | Required before |
 | --- | --- |
 | Browser/audio transport | Resolved in Phase 8: LiveKit (input only). |
-| STT/TTS/LLM providers and normalized streaming/cancellation contracts | STT resolved in Phase 8 (AssemblyAI behind StreamingSTTProvider); models use an OpenAI-compatible structured-output adapter; TTS open. |
+| STT/TTS/LLM providers and normalized streaming/cancellation contracts | STT resolved in Phase 8 (AssemblyAI behind StreamingSTTProvider); models use an OpenAI-compatible structured-output adapter; TTS resolved in Phase 9 (ElevenLabs behind StreamingTTSProvider). |
 | External-provider idempotency and reconciliation | External writes; local repository/transaction/idempotency contracts are implemented through Phase 5. |
 | Exact property resolution inputs and conflict/unknown-caller UX | First property-context flow. |
 | Configuration representation, versioning/update mechanism, workflow definitions | Service configuration implementation. |
@@ -266,6 +266,18 @@ implemented; TTS, playback and barge-in remain future decisions. Earlier unresol
 choices above are now resolved to LiveKit and AssemblyAI for this phase. Public authorization,
 distributed ownership, data retention and measured voice quality remain unresolved.
 See [Speech](speech.md) and [Phase 8 verification](verification/phase-8-verification.md).
+
+## Concrete Phase 9 composition
+
+Voice admission builds one `LiveKitMediaSession` per attachment and gives it to the input source
+and, when `TTS_ENABLED`, to `LiveKitAudioSink`. The lifespan builds the ElevenLabs adapter once on
+the shared HTTP client. `RealtimeSession` depends only on the provider-neutral presentation protocol
+(`realtime/presentation.py`): after `AGENT_RESPONSE` and `TURN_COMPLETED` it hands first-delivery
+text, filtered by `spoken_text()`, to `SpeechOutput`, whose lifecycle observer feeds a session-owned
+task that emits the audio events. `SpeechPipeline` holds provider finals for the admission grace
+and coalesces or aborts them before any turn is created. ADR 004's split holds: presentation
+failure never touches durable state. See [Speech](speech.md) and
+[Phase 9 verification](verification/phase-9-verification.md).
 
 ## Rejected patterns
 

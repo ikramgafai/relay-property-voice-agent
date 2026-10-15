@@ -1,6 +1,6 @@
 [project]
 name = "relay-property-voice-agent"
-version = "0.8.1"
+version = "0.9.0"
 description = "Real-time voice agent infrastructure with property-scoped routing, durable workflows and transactional tools"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"

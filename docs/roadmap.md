@@ -1,65 +1,37 @@
 # Roadmap
 
-Nothing in this document is implemented. It records the next planned work and the constraints
-that work must preserve.
+## Phase 9 — speech output: COMPLETE / VALIDATED (v0.9.0)
 
-## Streaming TTS and LiveKit agent output
+Streaming TTS, LiveKit agent audio, browser playback, spoken-reference filtering, replay-safe
+presentation and guarded speech admission are implemented and validated with a real microphone.
+See [Phase 9 verification](verification/phase-9-verification.md). Live coalescing of two provider
+finals into one turn is covered by deterministic tests but has not yet been observed live.
 
-```text
-AgentTurnResult → trusted response text → StreamingTTSProvider → provider adapter
-  → PCM audio → LiveKit agent output track
-```
-
-Planned shape: a vendor-neutral TTS protocol with a real adapter and a deterministic fake,
-explicit PCM output format, owned and bounded synthesis/publication tasks, and a scoped LiveKit
-output track. The first candidate provider is ElevenLabs Flash v2.5, subject to a review of the
-current official streaming API, PCM formats, sample rates and completion/error semantics.
-
-Today the backend token can subscribe but not publish, and the caller token can publish its
-microphone but not subscribe. Agent audio requires revising exactly those grants, not
-broadening them.
-
-Constraints:
-
-- TTS is presentation. It cannot establish business truth, reroute, advance a workflow or
-  call ToolExecutor.
-- Only trusted Relay response text is synthesized. FAILED stays a failure and UNKNOWN_OUTCOME
-  stays uncertain when spoken.
-- TTS failure cannot undo a committed operation. Trusted text remains observable when audio
-  fails.
-- Synthesized, queued, transported and played audio are distinct states. No playback
-  acknowledgment is invented.
-- Audio buffering is bounded.
-- Business-turn replay does not replay speech. Presentation gets its own explicit repeat
-  policy; a replayed AgentTurnResult is not permission to speak again.
-- Presentation resources carry an output identity so they can be cancelled later.
-- No audio buffers or task handles are persisted without a demonstrated durable requirement.
-
-## Barge-in and cancellation
+## Phase 10 — barge-in / interruption (next)
 
 ```text
-agent speaking → caller starts speaking → cancel synthesis/publication
-  → drop unplayed audio → process the new final turn
+Relay speaking → caller begins speaking → stop feeding new speech audio
+  → clear queued LiveKit audio → process the new user turn
 ```
 
-Cancellation stops presentation and unneeded computation; it is not a rollback. Committed
-operations are preserved, late chunks from a cancelled generation are rejected by output
-identity, and the start of the interrupting utterance is retained while cancellation runs.
-The architecture's [barge-in section](architecture.md#barge-in-and-committed-effects) describes
-the target semantics.
+Invariants:
 
-## Measurement
+- Already committed business effects remain committed. Stopping speech is not a rollback.
+- Interrupt by stopping the frame feed and calling `clear_queue()` on the LiveKit `AudioSource`.
+  Do **not** rely on cancelling a task blocked in `capture_frame()`: the native source keeps the
+  in-flight frame and rejects captures with `InvalidState` until it drains (Phase 9 finding).
+- Late frames from a cancelled presentation are rejected by `speech_output_id`.
+- The start of the interrupting utterance is retained while presentation stops.
+- Interruption must not be confused with business replay; the interrupted turn's text stays
+  delivered.
 
-- A paced or paid live routing benchmark on the 146-case dataset plus a held-out set, with
-  attention to hazard and human-request misses.
-- A labelled reply-kind evaluation for ADR 008 (answer versus new request versus ambiguous).
-- End-to-end latency: provider final → response text, and later → first agent audio.
-- Recognition and endpointing quality on a recorded audio corpus, including noise.
+## Later
 
-## Deployment hardening
-
-- Authentication and authorization in front of the demo session, turn and voice endpoints.
-- Durable realtime ownership across multiple workers (today one process owns connections).
-- Input admission policy (push-to-talk or voice-activity gating) so ambient speech does not
-  become application turns.
-- Retention, access and encryption policy for transcripts and operational records.
+- **Input admission hardening:** push-to-talk or voice-activity gating so open microphones do not
+  turn background speech into application turns.
+- **Measurement:** a paced live routing benchmark, a labelled reply-kind evaluation (ADR 008),
+  end-to-end latency (provider final → text → first agent audio), recognition quality on recorded
+  audio, and live observation of multi-final coalescing.
+- **Deployment hardening:** authentication in front of demo, turn and voice endpoints; durable
+  realtime ownership across workers; retention and access policy for transcripts; TTS provider
+  retention settings where the plan allows.

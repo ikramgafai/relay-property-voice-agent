@@ -32,6 +32,9 @@ build context.
 | `STT_MODEL`, `STT_SAMPLE_RATE`, `STT_LANGUAGE_CODES` | `universal-3-6-pro`, `16000`, `["en"]` |
 | `STT_MIN_TURN_SILENCE`, `STT_MAX_TURN_SILENCE` | `800`, `2000` ms (provider endpointing) |
 | `STT_FINAL_ADMISSION_GRACE_MS` | `400` ms; Relay-side grace before a provider final becomes a turn; `0` admits immediately |
+| `TTS_ENABLED` | `false`; enables speech output (requires `VOICE_ENABLED`) |
+| `ELEVENLABS_API_KEY`, `TTS_VOICE_ID` | Required when TTS is enabled; the voice ID is letters and digits only |
+| `TTS_MODEL` | `eleven_flash_v2_5` (the only allowed value) |
 
 The model adapter speaks the OpenAI-compatible Chat Completions API with strict JSON-schema
 output; any provider supporting that works. No provider or model is selected by default.
@@ -123,8 +126,9 @@ worker; connection ownership is per process.
 
 3. In `.env`, set `DATABASE_URL=postgresql+asyncpg://relay:relay_dev_only@127.0.0.1:15432/relay`,
    `VOICE_ENABLED=true`, `LIVEKIT_URL=ws://127.0.0.1:7880`, the LiveKit key pair,
-   `ASSEMBLYAI_API_KEY`, and optionally the routing model settings. Stop the Compose backend so
-   port 8000 is free, then run `uv run relay`.
+   `ASSEMBLYAI_API_KEY`, and optionally the routing model settings. For speech output also set
+   `TTS_ENABLED=true`, `ELEVENLABS_API_KEY` and `TTS_VOICE_ID`. Stop the Compose backend so port
+   8000 is free, then run `uv run relay`.
 4. Create a session with `POST /api/demo/sessions`.
 5. Serve the page and open `http://localhost:5173/voice.html` (this origin matches the default
    CORS setting):
@@ -135,8 +139,9 @@ worker; connection ownership is per process.
 
 6. Enter the backend URL and session UUID and connect. The page opens the control WebSocket,
    requests a scoped LiveKit token and publishes the microphone. Partial transcripts display;
-   only provider-final transcripts become turns. Disconnect when finished: an open microphone
-   turns background speech into turns.
+   only provider-final transcripts become turns. With TTS enabled, Relay's reply is spoken after
+   the text appears; use headphones, and click "Enable Relay audio" if the browser blocks
+   autoplay. Disconnect when finished: an open microphone turns background speech into turns.
 
 ## Evaluations
 
@@ -144,6 +149,7 @@ worker; connection ownership is per process.
 uv run --locked relay-eval-routing --offline --output evaluations/results/offline.json
 uv run --locked relay-eval-routing --live --output evaluations/results/live.json
 uv run --locked relay-eval-stt-live --wav path/to/recording.wav --expected "My AC isn't cooling."
+uv run --locked python -m evaluations.run_tts_live
 ```
 
 The offline run uses a deterministic lexical double and makes no network calls; its report is

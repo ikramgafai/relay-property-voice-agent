@@ -24,6 +24,11 @@ taxonomy. Paths are relative to `backend/app/`.
 | AudioFrame / AudioFormat | PCM bytes, sequence, sample rate, mono, `pcm_s16le` | `realtime/media/protocol.py` |
 | STTEvent | SPEECH_STARTED, PARTIAL, FINAL or ERROR with stream UUID, turn order, transcript, provider/model | `providers/stt/schemas.py` |
 | SpeechContext | Allowlisted keyterms plus the last trusted response text | `providers/stt/schemas.py` |
+| SpeechRequest | Speech output ID, trusted presentation text (≤ 4,000 chars) and optional language tag; no business objects | `providers/tts/schemas.py` |
+| StreamingTTSProvider | Declared PCM format plus a cancellable async stream of raw PCM bytes; raises safe `TTSFailure` | `providers/tts/protocol.py` |
+| MediaAudioSink | Outbound audio: connect, capture with backpressure, clear (interruption seam), close | `realtime/media/protocol.py` |
+| SpeechPresentation / PresentationEvent | What a session may ask of speech output, and the STARTED/ENDED lifecycle it receives back | `realtime/presentation.py` |
+| SpeechOutputRecord | Ephemeral per-presentation diagnostics: IDs, timestamps, status, safe code, counters; never text | `realtime/output.py` |
 
 The realtime wire protocol is defined in `realtime/schemas.py` and described in
 [realtime](realtime.md).

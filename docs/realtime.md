@@ -4,7 +4,7 @@
 durable Relay conversation. `APP_ENV=production` rejects the upgrade with policy code 1008,
 consistent with the disabled production demo HTTP routes. This is not authentication or
 authorization for public deployment. Use a trusted local/internal network. No browser origin
-policy or public identity verification is implemented here. Phase 8 speech input is described in [Speech](speech.md); TTS and live handoff remain unimplemented.
+policy or public identity verification is implemented here. Speech input and output are described in [Speech](speech.md); live handoff delivery and barge-in remain unimplemented.
 
 ## Ownership and architecture
 
@@ -195,7 +195,7 @@ No new database migration is needed. `sessions`, workflow rows, `agent_turns` an
 already persist everything required for business recovery. Realtime objects disappear on exit.
 Future STT can submit a final transcript through the same validated turn entry point; TTS can
 consume the authoritative response event. Future media transport and separately owned generation/
-TTS tasks must preserve this durable-state boundary. Phase 8 now implements final speech input; TTS remains unimplemented.
+TTS tasks must preserve this durable-state boundary. Phase 8 implements final speech input and Phase 9 speech output (owned by `SpeechOutput`, outside the turn task).
 
 
 ## Phase 8 speech attachment

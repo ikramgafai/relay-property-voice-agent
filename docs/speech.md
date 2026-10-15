@@ -1,8 +1,10 @@
-# Speech input — Phase 8
+# Speech input and output
 
-LiveKit transports microphone audio. AssemblyAI transcribes it. Relay owns session admission,
-property resolution, routing, workflows, tools and truthful text responses. No voice-agent
-framework, TTS, response audio, barge-in or telephony is installed. Phase 9 has not started.
+LiveKit transports caller and agent audio. AssemblyAI transcribes. ElevenLabs synthesizes trusted
+response text. Relay owns session and turn admission, property resolution, routing, workflows,
+tools and the authoritative text response. No voice-agent framework, barge-in or telephony is
+installed. Speech input arrived in Phase 8; speech output and guarded admission in Phase 9 (see
+"Speech output" below).
 
 ## Boundaries and official API review
 
@@ -194,8 +196,10 @@ Manual browser procedure (executed 2026-10-14; see [Phase 8.1 verification](veri
    `http://localhost:5173/voice.html`. Enter the backend URL and session UUID.
 5. Connect microphone. The page starts the control session, obtains the backend-scoped token,
    joins the room and publishes microphone audio. Grant browser permission.
-6. Observe partial/final text, then Relay's text response. Use configured phrases or configure
-   the existing routing model for broader language; STT does not replace routing interpretation.
+6. Observe partial/final text, then Relay's text response and, with `TTS_ENABLED=true`, its voice.
+   Use configured phrases or configure the existing routing model for broader language; STT does
+   not replace routing interpretation. Use headphones so Relay's voice does not reach the
+   microphone.
 7. Disconnect and verify media/STT close logs. Reconnect to continue the durable conversation.
 
 Live status (2026-10-14): real AssemblyAI streaming and a real browser microphone through a
@@ -207,5 +211,34 @@ ambient speech as application turns (safely abstained in the acceptance run). Lo
 the backend and browser must both reach the LiveKit URL and its media ports. In the acceptance
 setup LiveKit ran in Docker with `--dev --node-ip 127.0.0.1` and loopback-published 7880, 7881/tcp
 and 7882/udp, and the backend ran on the host.
-Future TTS can consume trusted AGENT_RESPONSE through a separately owned output adapter; no
-playback or interruption implementation is part of this phase.
+## Speech output (Phase 9)
+
+```text
+AgentTurnResult → AGENT_RESPONSE + TURN_COMPLETED (sent first) → spoken_text()
+  → SpeechOutput → ElevenLabs HTTP streaming (eleven_flash_v2_5, pcm_24000)
+  → PcmFramer (20 ms) → bounded queue (25 frames) → LiveKitAudioSink → relay-agent-audio → browser
+```
+
+- **Presentation only.** `RealtimeSession` asks an optional presentation to speak trusted text; it
+  never sees providers, formats or credentials. Speech cannot route, advance workflows, call tools
+  or change results. TTS or sink failure leaves the text and business result intact.
+- **When Relay speaks.** Only first deliveries (`replayed=false`) after the text response was
+  enqueued. Exact business replays are never re-spoken; a bounded history refuses re-presenting a
+  turn whose speech already started.
+- **Spoken references.** The renderer's terminal `Reference: <uuid>.` is spoken as "The reference
+  is available in the chat."; the text keeps the UUID. No other text is rewritten.
+- **Scheduling and buffering.** One active and one pending output; a newer response replaces a
+  pending one, never the active one. The Python buffer holds 25 × 20 ms frames and the LiveKit
+  `AudioSource` queue 200 ms; a full buffer pauses reading the TTS HTTP stream.
+- **Transport.** The backend participant that receives the caller's microphone also publishes one
+  `relay-agent-audio` track (microphone source), subscribable only by the caller. The browser
+  attaches only that track from `relay-server-{session}` and offers an "Enable Relay audio" button
+  when autoplay is blocked.
+- **Events.** `AGENT_AUDIO_OUTPUT_STARTED` (first frame accepted by the local LiveKit source; not
+  remote playback) and `AGENT_AUDIO_OUTPUT_ENDED` (status, safe code, accepted milliseconds). They
+  carry no text, voice ID or provider detail.
+- **Explicit smoke.** `uv run --locked python -m evaluations.run_tts_live` makes one real request and
+  reports timing and PCM statistics without saving audio.
+
+Barge-in is not implemented. Interruption must stop feeding frames and call `clear_queue()`; a task
+blocked in `capture_frame()` must not be cancelled (see [roadmap](roadmap.md)).
