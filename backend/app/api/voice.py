@@ -83,6 +83,7 @@ async def voice_token(session_id: UUID, body: VoiceInput, request: Request) -> V
                 LiveKitAudioSource(settings, session_id, media),
                 AssemblyAIStreaming(settings),
                 speech_context(context, previous),
+                admission_grace_ms=settings.stt_final_admission_grace_ms,
             )
             provider = getattr(request.app.state, "tts_provider", None)
             output = None

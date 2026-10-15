@@ -64,6 +64,26 @@ partial on timeout. See [provider turn detection](https://www.assemblyai.com/doc
 Default provider silence settings are 800/2000 ms (raised from 128/1280 after live speech ended
 turns on natural mid-sentence pauses) and remain configurable.
 
+The provider proposes turn boundaries; Relay decides when a boundary becomes an application
+turn. After a provider final, SpeechPipeline holds it provisionally for
+`STT_FINAL_ADMISSION_GRACE_MS` (default 400 ms). If speech resumes inside that window
+(provider-neutral `SPEECH_STARTED`, or the first `PARTIAL` of a newer provider turn), the final
+stays provisional and the next provider final is coalesced with it: segments are joined with
+one space, never rewritten, and the first segment's speech identity is the admitted identity.
+The grace restarts after each final. A provisional final never reaches RealtimeSession, so it
+cannot route, advance a workflow or execute a tool.
+
+Admission fails closed whenever the utterance may be incomplete: the whole provisional
+utterance is aborted, never admitted as a prefix, when resumed speech shows no provider
+activity for 10 s (`CONTINUATION_TIMEOUT`), when it would exceed 8 segments or 8,000
+characters (`ADMISSION_LIMIT_EXCEEDED`), when the STT provider fails (`PROVIDER_FAILURE`),
+when input ends while the speaker had resumed (`INPUT_ENDED_DURING_CONTINUATION`), or when the
+session ends (`SESSION_END`). The resumed provider turn is consumed too, so its tail never
+becomes a turn of its own. Only a clean input end (media ended) with no continuation in
+progress admits the provisional final through the normal path. Logs distinguish
+`STT_FINAL_ADMITTED` from `STT_PROVISIONAL_ABORTED` and record counts, reasons and timings,
+never transcript text.
+
 SpeechStarted is retained until the next Turn supplies its turn_order; USER_SPEECH_STARTED then
 carries the actual provider timestamp. This can delay event delivery but does not infer speech
 onset from text arrival. USER_SPEECH_ENDED means provider-final turn endpoint, not a measured

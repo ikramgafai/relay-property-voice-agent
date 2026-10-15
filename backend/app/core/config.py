@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     # mid-sentence pauses in live validation, committing fragments as separate turns.
     stt_min_turn_silence: int = Field(default=800, ge=50, le=10000)
     stt_max_turn_silence: int = Field(default=2000, ge=50, le=10000)
+    # Relay-side, provider-neutral: how long a provider final stays provisional before it
+    # becomes an application turn. Speech resuming inside this window is coalesced with it.
+    # Distinct from the provider's turn-detection silences above. 0 admits immediately.
+    stt_final_admission_grace_ms: int = Field(default=400, ge=0, le=5000)
     # Speech output (Phase 9). Disabled by default; nothing below is read while disabled.
     tts_enabled: bool = False
     elevenlabs_api_key: SecretStr | None = None
