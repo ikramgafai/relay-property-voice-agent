@@ -4,9 +4,10 @@
 
 This document was written in Phase 0 as the V1 target. As of Phase 8.1, property context,
 routing, workflows, local tools, orchestration, realtime sessions and speech input are
-implemented, and since Phase 9 Relay also speaks its responses. Barge-in (step 5 of the demo below
-as written) is not implemented, so the hazard update is a subsequent spoken turn rather than an
-interruption. Incident identifiers are UUIDs; `EM-1042` is illustrative. See
+implemented, since Phase 9 Relay also speaks its responses, and since Phase 10 the caller can
+interrupt it. Step 5 of the demo below was validated live in Phase 10: the caller interrupted the
+spoken incident confirmation, the committed incident was kept, and the interrupting hazard
+updated it in place. Incident identifiers are UUIDs; `EM-1042` is illustrative. See
 [verification](verification/README.md) for what has been demonstrated.
 
 ## V1 scope

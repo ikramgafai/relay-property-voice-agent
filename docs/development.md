@@ -141,7 +141,10 @@ worker; connection ownership is per process.
    requests a scoped LiveKit token and publishes the microphone. Partial transcripts display;
    only provider-final transcripts become turns. With TTS enabled, Relay's reply is spoken after
    the text appears; use headphones, and click "Enable Relay audio" if the browser blocks
-   autoplay. Disconnect when finished: an open microphone turns background speech into turns.
+   autoplay. Speaking while Relay talks interrupts it (barge-in): the voice stops and the new
+   utterance becomes the next turn. Headphones matter more with barge-in, because Relay's own
+   voice reaching the microphone could interrupt it. Disconnect when finished: an open microphone
+   turns background speech into turns.
 
 ## Evaluations
 

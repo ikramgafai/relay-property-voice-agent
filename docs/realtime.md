@@ -4,7 +4,7 @@
 durable Relay conversation. `APP_ENV=production` rejects the upgrade with policy code 1008,
 consistent with the disabled production demo HTTP routes. This is not authentication or
 authorization for public deployment. Use a trusted local/internal network. No browser origin
-policy or public identity verification is implemented here. Speech input and output are described in [Speech](speech.md); live handoff delivery and barge-in remain unimplemented.
+policy or public identity verification is implemented here. Speech input, output and barge-in are described in [Speech](speech.md); live handoff delivery remains unimplemented.
 
 ## Ownership and architecture
 
@@ -128,8 +128,9 @@ Changing that payload under the same ID yields TURN_CONFLICT.
 After `process()` returns a durable result, cancellation cannot suppress the result task: it
 returns TURN_ALREADY_COMPLETED while output is pending. After the task is gone it returns
 TURN_NOT_ACTIVE. Neither invents a business cancellation. SESSION_END/disconnect may still stop
-remaining delivery; replay recovers the saved result. Future **presentation cancellation** will
-stop generation/TTS/playback independently; it is not implemented in Phase 7.
+remaining delivery; replay recovers the saved result. **Presentation cancellation** (Phase 10
+barge-in) is separate from this: it stops TTS and playback only, never calls `cancel()` and never
+touches the turn task (see [Phase 10 barge-in](#phase-10-barge-in)).
 
 Disconnect stops input, cancels/awaits the active turn, stops/awaits IO tasks, releases the
 manager entry and clears output buffers. It cannot deliver SESSION_ENDED to an absent peer.
@@ -206,3 +207,15 @@ transient; STT_FINAL and all existing business events remain critical. Media fai
 without cancelling an accepted application turn. Control-session teardown closes media/STT and
 retains existing cancellation/replay semantics. The session caches only the latest trusted
 response text for STT context, not business truth. See [Speech](speech.md) for complete contracts.
+
+## Phase 10 barge-in
+
+`RealtimeSession.user_speech_started(signal)` is the barge-in policy. `SpeechPipeline` calls it at
+most once per provider turn. When a presentation is attached it calls the non-blocking
+`interrupt()` first, even if nothing appears to be speaking, because accepted audio may still be
+buffered in the sink. Only then does it emit `USER_SPEECH_STARTED`, so a slow client cannot delay the
+local stop. An `interrupt()` exception is logged (`SPEECH_PRESENTATION_INTERRUPT_FAILED`) and the
+event is still emitted. The method never cancels `active_task`, never calls `cancel()` and never
+changes the binding or a result. An interrupted output is reported as `AGENT_AUDIO_OUTPUT_ENDED`
+with status `CANCELLED` and code `USER_INTERRUPTED`; no new event type exists. The log
+`REALTIME_BARGE_IN_REQUESTED` records the speech turn ID and whether a presentation was targeted.

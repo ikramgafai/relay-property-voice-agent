@@ -6,9 +6,11 @@ This architecture was accepted in Phase 0 and implemented incrementally. As of P
 property context, constrained routing, durable workflows, trusted local tools,
 [text-turn orchestration](orchestration.md), [realtime sessions](realtime.md),
 [speech input](speech.md) and [pending-reply interpretation](decisions/008-pending-reply-interpretation.md)
-are implemented, and since Phase 9 speech output (TTS, LiveKit agent audio, browser playback) and
-guarded speech admission. Barge-in, external PMS integration and live handoff delivery are not. The "Concrete Phase N composition" sections at the end record how each phase mapped onto
-this design; sections that describe target behavior say so.
+are implemented, since Phase 9 speech output (TTS, LiveKit agent audio, browser playback) and
+guarded speech admission, and since Phase 10 barge-in (caller speech interrupts presentation only).
+External PMS integration and live handoff delivery are not. The "Concrete Phase N composition"
+sections at the end record how each phase mapped onto this design; sections that describe target
+behavior say so.
 
 1. Resolve caller → property → unit/contact context → enabled services → route → workflow.
    A missing property never permits another property's catalog; an unknown resident or unit
@@ -123,7 +125,12 @@ Application state is persisted as required for recovery; realtime state is recon
 
 ## Barge-in and committed effects
 
-Target design for Phase 10; not implemented. Speech output exists, but nothing interrupts it yet (see [roadmap](roadmap.md)).
+Implemented in Phase 10 ([Concrete Phase 10 composition](#concrete-phase-10-composition)). The
+Phase 0 target below described explicit SPEAKING/INTERRUPTED session states and a
+USER_INTERRUPTED event; the implementation instead reports the interruption as
+`AGENT_AUDIO_OUTPUT_ENDED` with status `CANCELLED` and code `USER_INTERRUPTED`, and the session
+state machine is unchanged. There is no streaming model generation to cancel: model calls are
+one-shot and complete before speech starts.
 
 On detected user speech during SPEAKING, record USER_INTERRUPTED, transition through INTERRUPTED, stop browser playback/flush queued audio, cancel TTS, and cancel any now-unnecessary model generation. Advance the turn/generation identifier and reject late chunks or stale proposals. Capture the interrupting audio while cancellation is processed so the beginning of the new utterance is not lost, then listen and process its final transcript.
 
@@ -137,7 +144,7 @@ For EM-1042, the tool commit survives cancellation of speech about its creation.
 
 Structured logs correlate sessions, turns, workflow runs and tool operations, with per-stage turn timings (context, routing, workflow, tools, rendering), routing outcomes and STT stream diagnostics. Speech-to-response and TTS first-audio latency are planned measurements; model calls are one-shot, so there is no first-token latency. Durable tool outcomes are authoritative if telemetry emission fails. Explicit failure events and normalized errors support diagnosis without logging raw audio or unrestricted resident information by default.
 
-The Phase 0 verification plan required exercising both property taxonomies with the same router, unresolved context, disabled/stale service selection, escalation, barge-in before/during/after a tool commit, late provider output, duplicate creates, uncertain commits, reconnect, and handoff truthfulness. Phases 1–8.1 cover these except barge-in around a tool commit, which needs audio output. See [failure modes](failure-modes.md) and [verification records](verification/README.md).
+The Phase 0 verification plan required exercising both property taxonomies with the same router, unresolved context, disabled/stale service selection, escalation, barge-in before/during/after a tool commit, late provider output, duplicate creates, uncertain commits, reconnect, and handoff truthfulness. Phases 1–8.1 cover these except barge-in around a tool commit, which needs audio output; Phase 10 covers barge-in after a committed create (live) and the presentation races deterministically. See [failure modes](failure-modes.md) and [verification records](verification/README.md).
 
 ## Phase 1 frozen foundation
 
@@ -278,6 +285,18 @@ task that emits the audio events. `SpeechPipeline` holds provider finals for the
 and coalesces or aborts them before any turn is created. ADR 004's split holds: presentation
 failure never touches durable state. See [Speech](speech.md) and
 [Phase 9 verification](verification/phase-9-verification.md).
+
+## Concrete Phase 10 composition
+
+`SpeechPipeline` signals at most one caller speech start per provider turn (`SPEECH_STARTED`, or
+the first partial of a newer turn) to `RealtimeSession.user_speech_started()`, which owns barge-in
+policy: it calls the non-blocking `SpeechPresentation.interrupt()` before emitting
+`USER_SPEECH_STARTED`, and never touches the active turn task, binding or results. `SpeechOutput`
+settles the interrupted output cooperatively in its supervisor (stop the producer, discard queued
+frames, `MediaAudioSink.clear()`, let an in-flight capture return, clear again) and fences by
+generation so an interrupt never reaches an output presented after it. ADR 004 holds: interruption
+is presentation state only. See [Speech](speech.md) and
+[Phase 10 verification](verification/phase-10-verification.md).
 
 ## Rejected patterns
 

@@ -20,12 +20,14 @@ text. For current behavior, read the source and the subsystem documents in `docs
 | 8 | LiveKit input, AssemblyAI streaming STT, speech identity, media tokens | 272 | [phase-8](phase-8-verification.md) |
 | 8.1 | Pending-reply interpretation, safety-critical downgrade protection, ADR 008 | 310 | [phase-8.1](phase-8.1-verification.md) |
 | 9 | Speech output (ElevenLabs, LiveKit agent audio, browser playback), endpointing, guarded admission | 530 | [phase-9](phase-9-verification.md) |
+| 10 | Barge-in: cooperative speech-output interruption, speech-start wiring, STT timing instrumentation | 569 | [phase-10](phase-10-verification.md) |
 
 Counts are successive totals of one growing suite, not separate suites.
 
 ## Phase 8.1 evidence (2026-10-14)
 
-Superseded for current status by [Phase 9 verification](phase-9-verification.md).
+Superseded for current status by [Phase 9](phase-9-verification.md) and
+[Phase 10](phase-10-verification.md) verification.
 
 | Level | What it proves | Result |
 | --- | --- | --- |
@@ -47,10 +49,12 @@ authoritative:
 - ADRs 001–006 were accepted in Phase 0 before implementation. Each ADR's status line now
   records where it was implemented.
 - The interruption story in the scope and architecture documents (barge-in during audible
-  playback) is a target. Relay speaks since Phase 9, but barge-in is not implemented, so the hazard
-  update is a subsequent turn.
+  playback) was implemented and validated live in Phase 10. Its Phase 0 mechanics differ: there is
+  no SPEAKING/INTERRUPTED session state and no `USER_INTERRUPTED` event; an interrupted output is
+  reported as `AGENT_AUDIO_OUTPUT_ENDED` with status `CANCELLED` and code `USER_INTERRUPTED`.
   `EM-1042` in older prose is illustrative; incident identifiers are UUIDs.
-- The conceptual state/event tables include future states, events and envelope field names.
+- The conceptual state/event tables (`state-machine.md`, `event-model.md`) include future states,
+  events and envelope field names, including the barge-in states and events above.
   `backend/app/realtime/schemas.py` defines the actual wire contract; there is no event table.
 - The conceptual data model lists messages, routing events, latency events and configuration
   versions. Four migrations implement fourteen domain tables; those other entities do not exist.

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted in Phase 0. The durable/ephemeral split is implemented (Phase 6 checkpoints, Phase 7 realtime task ownership and cancellation). Speech output exists since Phase 9 and its failures never touch durable state; presentation cancellation on barge-in is not implemented yet (Phase 10).
+Accepted in Phase 0. The durable/ephemeral split is implemented (Phase 6 checkpoints, Phase 7 realtime task ownership and cancellation). Speech output exists since Phase 9 and its failures never touch durable state. Presentation cancellation on barge-in is implemented since Phase 10 and was validated live: an interrupted spoken confirmation left the committed incident in place, and the interrupting hazard updated the same incident (see [Phase 10 verification](../verification/phase-10-verification.md)). Interruption is reported through the output's terminal status (`CANCELLED` / `USER_INTERRUPTED`) rather than a separate interruption event. Model generation is one-shot and finishes before speech starts, so there is no generation to cancel.
 
 ## Context
 

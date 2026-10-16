@@ -2,9 +2,9 @@
 
 LiveKit transports caller and agent audio. AssemblyAI transcribes. ElevenLabs synthesizes trusted
 response text. Relay owns session and turn admission, property resolution, routing, workflows,
-tools and the authoritative text response. No voice-agent framework, barge-in or telephony is
-installed. Speech input arrived in Phase 8; speech output and guarded admission in Phase 9 (see
-"Speech output" below).
+tools and the authoritative text response. No voice-agent framework or telephony is installed.
+Speech input arrived in Phase 8; speech output and guarded admission in Phase 9 (see "Speech
+output" below); barge-in in Phase 10 (see "Barge-in" below).
 
 ## Boundaries and official API review
 
@@ -88,8 +88,10 @@ never transcript text.
 
 SpeechStarted is retained until the next Turn supplies its turn_order; USER_SPEECH_STARTED then
 carries the actual provider timestamp. This can delay event delivery but does not infer speech
-onset from text arrival. USER_SPEECH_ENDED means provider-final turn endpoint, not a measured
-acoustic stop. No invented confidence is attached.
+onset from text arrival. In the Phase 10 live runs the raw SpeechStarted arrived at most about
+8 ms before that first Turn, so the hold is negligible in practice; the provider itself reported
+speech about 1.4–1.5 s after the onset it describes. USER_SPEECH_ENDED means provider-final turn
+endpoint, not a measured acoustic stop. No invented confidence is attached.
 
 Speech UUID is UUID5(provider stream UUID, turn_order). Application UUID is UUID5(conversation
 UUID, speech UUID). An ordered-stream high-water mark suppresses duplicate finals and stale
@@ -155,8 +157,13 @@ backpressure rather than accumulating an unbounded application queue.
 Structured measurements include first-audio-to-first-partial, last-received-audio-to-final,
 final-to-accepted-turn-start, stream duration, partial/final/duplicate/failure counts and partial
 drops. Last audio includes silence and buffering, so this is not an acoustic endpoint latency
-benchmark. No live numbers have been recorded. Existing turn/event logs provide session and turn
-correlation; these measurements are diagnostics, not a new metrics service.
+benchmark. Phase 10 adds speech-start diagnostics, again counts and timings only, never transcript
+text: `ASSEMBLYAI_RAW_SPEECH_STARTED` (provider `audio_timestamp_ms` and audio sent so far),
+`ASSEMBLYAI_TURN_RECEIVED` (turn order, character/word counts, first/last word offsets),
+`ASSEMBLYAI_SPEECH_START_RELEASED` (how long the raw signal was held) and
+`STT_PROVIDER_EVENT_RECEIVED` (every provider event with admission and dedupe state). Single-run
+live figures are recorded in the verification documents. Existing turn/event logs provide session
+and turn correlation; these measurements are diagnostics, not a new metrics service.
 
 ## Explicit live validation
 
@@ -240,5 +247,38 @@ AgentTurnResult → AGENT_RESPONSE + TURN_COMPLETED (sent first) → spoken_text
 - **Explicit smoke.** `uv run --locked python -m evaluations.run_tts_live` makes one real request and
   reports timing and PCM statistics without saving audio.
 
-Barge-in is not implemented. Interruption must stop feeding frames and call `clear_queue()`; a task
-blocked in `capture_frame()` must not be cancelled (see [roadmap](roadmap.md)).
+## Barge-in (Phase 10)
+
+```text
+provider SpeechStarted (or first partial of a newer turn) → SpeechPipeline (≤ 1 per provider turn)
+  → RealtimeSession.user_speech_started() → SpeechPresentation.interrupt() → SpeechOutput
+  → MediaAudioSink.clear() → LiveKit AudioSource.clear_queue()
+```
+
+- **Trigger and dedupe.** `SPEECH_STARTED` is the primary trigger and the first `PARTIAL` of a
+  newer provider turn the fallback. A repeat, late or stale signal for a provider turn that was
+  already signalled or finalized is ignored, so each provider turn produces at most one
+  interruption request. FINAL never triggers one. Admission continuation is a separate effect of
+  the same signal and is unchanged.
+- **Policy.** `RealtimeSession` requests the non-blocking interrupt before emitting
+  `USER_SPEECH_STARTED`. It never cancels the business turn; see [realtime](realtime.md).
+- **Cooperative settlement.** `interrupt()` targets only outputs that exist when it is called
+  (generation fence). A pending output ends at once. The supervisor settles the active one: cancel
+  the TTS producer, discard the Python-side frames, clear the sink, let an in-flight capture return
+  on its own, clear again (dropping that last frame), then finish. The next output starts only
+  afterwards, so no frame or clear from the old output can touch it.
+- **Never cancel a blocked capture.** Cancelling `capture_frame()` leaves the native LiveKit
+  source rejecting captures until its in-flight frame drains (Phase 9 finding). `clear_queue()`
+  releases it instead, and the source stays usable for the next output.
+- **Producer ownership.** An interrupted producer cannot queue frames. One slower than 2 s to stop
+  is retired but stays tracked, never delays the next output, and is cancelled by `close()`.
+- **Idle interrupt.** With nothing active, `interrupt()` returns false but still schedules one
+  native clear before any later output, because a `COMPLETED` output's last ≤ 200 ms can still be
+  queued in LiveKit.
+- **Result.** Affected outputs end `CANCELLED` / `USER_INTERRUPTED`. Clear failures are logged; if
+  the in-flight capture then fails or times out, the existing sink rules apply and output becomes
+  unavailable (logged as `SPEECH_OUTPUT_TRANSPORT_DEGRADED`).
+- **Session teardown** still uses `close()` (`SESSION_ENDED`), which may cancel the consumer because
+  the sink is closed immediately afterwards.
+
+Live evidence and measured latency are in [Phase 10 verification](verification/phase-10-verification.md).

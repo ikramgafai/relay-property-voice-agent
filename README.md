@@ -1,8 +1,8 @@
 # Relay — Real-Time Voice Agent Infrastructure
 
 Reliability-focused infrastructure for transactional voice agents: streaming speech, property-scoped
-routing, durable workflows, guarded turn admission, idempotent tools, realtime audio output and
-explicit failure semantics. Property management is the demonstration domain, not the product
+routing, durable workflows, guarded turn admission, idempotent tools, realtime audio output with
+barge-in, and explicit failure semantics. Property management is the demonstration domain, not the product
 boundary.
 
 > Models may propose decisions, but backend state and verified tool results remain authoritative.
@@ -27,7 +27,9 @@ flowchart TD
     mic[Browser microphone] -->|WebRTC| lkin[LiveKit]
     lkin -->|PCM16 16 kHz| stt{{AssemblyAI streaming STT}}
     stt -->|provider final| adm[Guarded speech admission]
+    stt -->|speech start| adm
     adm -->|admitted final| rs[RealtimeSession]
+    rs -.->|barge-in: interrupt presentation| out
     rs --> orch[TurnOrchestrator]
     orch --> ctx[Fresh PropertyContext]
     ctx --> route[Reply interpretation / property-scoped routing]
@@ -52,7 +54,7 @@ flowchart TD
 | WorkflowEngine | Decides what happens next | Perform side effects |
 | ToolExecutor | Owns trusted side effects, idempotency, verification | Act without an authorized ActionRequest |
 | ToolResult | Establishes business truth | — |
-| SpeechOutput / TTS | Presents trusted text as audio | Change business state |
+| SpeechOutput / TTS | Presents trusted text as audio; stops when the caller interrupts | Change business state |
 
 ## Reliability guarantees
 
@@ -64,8 +66,10 @@ flowchart TD
 - **ActionRequest is not success.** Only a committed, re-verified ToolResult produces success text.
 - **Idempotent actions** (action ID + canonical request hash); unknown outcomes are reconciled,
   never blindly retried.
-- **Business state is separate from realtime presentation state**: disconnects, TTS failures and
-  cancellations never roll back committed work.
+- **Business state is separate from realtime presentation state**: disconnects, TTS failures,
+  cancellations and barge-in never roll back committed work.
+- **Barge-in stops speech, not business work**: an interrupted confirmation leaves its committed
+  ToolResult in place, and the caller's next utterance is processed as a normal turn.
 - **Partial transcripts never become turns**, and provider final boundaries are guarded before
   admission (fail closed when an utterance may be incomplete).
 - **Replayed business turns are not re-spoken**; spoken text omits raw reference UUIDs.
@@ -81,6 +85,13 @@ flowchart TD
   500 ms buffer) → ElevenLabs `eleven_flash_v2_5` HTTP streaming (`pcm_24000`) → 20 ms frames →
   LiveKit `relay-agent-audio` track on the same backend participant → browser `<audio>`.
 - **Order:** the text response and turn completion are always sent before any audio starts.
+- **Barge-in:** a caller speech start (at most one per provider turn) makes `RealtimeSession`
+  request a provider-neutral, non-blocking `interrupt()` before emitting `USER_SPEECH_STARTED`.
+  `SpeechOutput` fences by generation, so only outputs that already exist are affected. It cancels
+  the TTS stream, discards queued Python frames and clears LiveKit's native buffer with
+  `AudioSource.clear_queue()`. An in-flight `capture_frame()` is never intentionally cancelled: it
+  returns on its own, then a second clear drops it. The output ends `CANCELLED` /
+  `USER_INTERRUPTED`, and the next response reuses the same sink.
 
 ## Transactional tool semantics
 
@@ -90,25 +101,32 @@ the same action ID and hash replays the recorded result; changed arguments confl
 acknowledgment is lost and verification is unavailable, the result is `UNKNOWN_OUTCOME`, reported as
 such. Local atomicity is not distributed exactly-once.
 
-## Verified Phase 9 results
+## Verified results
 
-Measured on a real browser microphone, real AssemblyAI, real ElevenLabs and a local LiveKit server
-([full evidence](docs/verification/phase-9-verification.md)):
+Measured on a real browser microphone, real AssemblyAI, real ElevenLabs and a local LiveKit server.
 
-- **9-turn Atlas flagship:** 9 provider finals → 9 admitted turns; 0 duplicate/stale finals,
-  0 `SESSION_BUSY`, 0 provisional aborts.
-- **Speech output:** 9/9 outputs `COMPLETED`; warm first TTS audio ≈ 240–253 ms; audibility
-  confirmed by a human listener during validation.
-- **Business invariants:** 1 incident created and the same incident updated once (revision 1 → 2),
-  0 maintenance requests, 1 human handoff linked to the incident, 3 successful tool calls,
-  0 duplicate executions, no Palm Heights leakage.
-- **Regression fixed:** a sentence with a mid-sentence pause previously split into two turns and
-  two incident updates; with the new endpointing and admission grace it became one turn and one
-  update.
-- **Suite:** 530 tests passing (PostgreSQL 17 + LiveKit in Docker), strict mypy clean, Ruff clean.
+**Phase 10, barge-in** ([full evidence](docs/verification/phase-10-verification.md)):
+
+- **Transactional interruption:** an emergency incident was committed; the caller interrupted its
+  spoken confirmation 2.86 s later; the voice stopped (`CANCELLED` / `USER_INTERRUPTED`, settled
+  13 ms after the request); the interrupting hazard sentence was admitted in full and updated the
+  **same** incident (revision 1 → 2). One create and one update, each attempted once, no replays,
+  no duplicate incident, no rollback; the next response was spoken on the same sink.
+- **Human checks:** quick audible cutoff, full interrupting sentence preserved, next response heard.
+- **Latency:** Relay took about 2–10 ms from the provider's raw speech signal to the interrupt
+  request; AssemblyAI itself reported speech about 1.4–1.5 s after onset.
+- **Honest record:** the first real-microphone attempt failed (late cutoff; the provider kept only
+  the last word of the interruption) and is documented with the instrumentation it led to.
+- **Suite:** 569 tests passing (PostgreSQL 17 + LiveKit in Docker), strict mypy clean, Ruff clean.
+
+**Phase 9, speech output** ([full evidence](docs/verification/phase-9-verification.md)): a 9-turn
+Atlas flagship with 9 provider finals → 9 admitted turns and 9/9 outputs completed; one incident
+created and updated in place; a linked handoff; warm first TTS audio ≈ 240–253 ms. A sentence that
+had split into two turns at a mid-sentence pause became one turn after the endpointing and
+admission-grace fix.
 
 Not yet observed live: two provider finals coalescing into one turn (covered by deterministic
-tests only). One brief output underrun occurred in the flagship; the output recovered and completed.
+tests only).
 
 ## Demo scenario
 
@@ -116,14 +134,15 @@ tests only). One brief output underrun occurred in the flagship; the output reco
 | --- | --- |
 | "My AC isn't cooling properly." | Non-Emergency Maintenance; asks for symptoms |
 | "My AC is only blowing warm air." | Natural answer to the workflow question; offers a request |
-| "Actually, water is spouting out of it." | Escalates to Emergency Maintenance (active flooding) |
-| "Living room AC." | The model reads this fragment as routine AC; the backend pins it as the answer to the emergency's location question |
-| "No, nothing electrical." / "It is continuous." | Creates the emergency incident (reference shown in text, not spoken) |
-| "Wait, the water is getting close through an electrical outlet." | Updates the **same** incident |
+| "Actually, water is pouring out of it." | Escalates to Emergency Maintenance (active flooding) |
+| "Living room AC." | The model can read this fragment as routine AC; the backend pins it as the answer to the emergency's location question |
+| "No, nothing electrical." / "It is continuous." | Creates the emergency incident and starts speaking the confirmation (reference shown in text, not spoken) |
+| *(interrupting)* "Wait, the water is getting close to an electrical outlet." | Stops speaking; the committed incident stays; updates the **same** incident |
 | "I want to speak with someone." / "Yes, please." | Creates a human handoff linked to the incident; says no live transfer occurred |
 
 This exercises every boundary above: guarded admission, interpretation with workflow context,
-safety-critical pinning, idempotent create/update and truthful presentation.
+safety-critical pinning, idempotent create/update, barge-in without rollback and truthful
+presentation.
 
 ## Running locally
 
@@ -161,7 +180,8 @@ GitHub Actions
 
 ## Roadmap
 
-- **Phase 10 — barge-in:** stop speaking when the caller interrupts, without touching committed work.
+- Optional faster interruption through local voice-activity detection (provider speech detection
+  currently dominates barge-in latency).
 - Input admission hardening (push-to-talk or voice-activity gating for open microphones).
 - Latency and accuracy measurement; deployment hardening.
 
@@ -169,4 +189,4 @@ Details in [roadmap](docs/roadmap.md). Engineering docs:
 [architecture](docs/architecture.md) · [speech](docs/speech.md) · [routing](docs/routing.md) ·
 [orchestration](docs/orchestration.md) · [workflows](docs/workflows.md) · [tools](docs/tools.md) ·
 [realtime](docs/realtime.md) · [contracts](docs/contracts.md) · [decisions](docs/decisions/) ·
-[verification](docs/verification/README.md) · [release notes](docs/releases/v0.9.0.md)
+[verification](docs/verification/README.md) · [release notes](docs/releases/v0.10.0.md)

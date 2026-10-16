@@ -4,10 +4,12 @@ Written in Phase 0 as behavioral requirements. Implemented since: missing contex
 disconnect (STT_FAILED, fresh stream, no partial promotion), model timeout and invalid output
 (abstain or clarify, no automatic retry), invalid tool arguments, database failure and
 UNKNOWN_OUTCOME reconciliation, duplicate actions, control/media disconnect with durable
-reconnect, and ambiguous routing (clarify or abstain; no clarification budget yet). Not
-implemented since Phase 9: TTS failure (text and business results stay intact; output reports
-FAILED with a safe code). Not implemented: barge-in (Phase 10); external PMS reconciliation, because
-there is no external PMS. Event names below are conceptual; the
+reconnect, and ambiguous routing (clarify or abstain; no clarification budget yet). Implemented
+since Phase 9: TTS failure (text and business results stay intact; output reports FAILED with a
+safe code). Implemented since Phase 10: barge-in (presentation stops with `CANCELLED` /
+`USER_INTERRUPTED`; committed results and operation references are kept; validated live after a
+committed incident create). Not implemented: external PMS reconciliation, because there is no
+external PMS. Event names below are conceptual; the
 implemented wire events are listed in [realtime](realtime.md) and [speech](speech.md).
 
 All retries must be bounded. Preserve confirmed business outcomes and avoid claiming success for
