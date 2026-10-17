@@ -216,12 +216,18 @@ test('timeline keeps subscription, attachment, playback and speaking distinct', 
   assert.ok(entries.every((e, i) => i === 0 || e.at > entries[i - 1].at)); // monotonic
 });
 
-test('voice.html wires only the module filter and keeps microphone publication unchanged', () => {
+test('the voice page wires only the module filter and keeps microphone publication unchanged', () => {
+  // The page markup lives in voice.html; its connection/audio wiring in relay-voice.mjs.
   const html = readFileSync(new URL('../voice.html', import.meta.url), 'utf8');
-  assert.match(html, /import \{AgentAudio, describeAudioEvent\} from '\.\/relay-audio\.mjs'/);
-  assert.match(html, /RoomEvent\.TrackSubscribed,\(track,publication,participant\)=>\{if\(agent\) agent\.onTrackSubscribed/);
-  assert.match(html, /await room\.localParticipant\.setMicrophoneEnabled\(true\);/);
-  assert.match(html, /room\.startAudio\(\)/);
-  assert.doesNotMatch(html, /\.attach\(/); // only the filtered module attaches tracks
+  const controller = readFileSync(new URL('../relay-voice.mjs', import.meta.url), 'utf8');
+  assert.match(html, /<script type="module" src="\.\/relay-voice\.mjs"><\/script>/);
+  assert.match(controller, /import \{AgentAudio, describeAudioEvent\} from '\.\/relay-audio\.mjs'/);
+  assert.match(controller, /RoomEvent\.TrackSubscribed,\(track,publication,participant\)=>\{if\(agent\) agent\.onTrackSubscribed/);
+  assert.match(controller, /await room\.localParticipant\.setMicrophoneEnabled\(true\);/);
+  assert.match(controller, /room\.startAudio\(\)/);
+  for (const source of [html, controller]) {
+    assert.doesNotMatch(source, /\.attach\(/); // only the filtered module attaches tracks
+  }
+  assert.equal(html.match(/<audio\b/g).length, 1); // exactly one agent audio element
   assert.match(html, /<audio id="agent" autoplay><\/audio>/);
 });

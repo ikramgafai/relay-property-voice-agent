@@ -1,0 +1,1588 @@
+{
+ "label": "recorded Gate B session 0bc0f967\u2026 (server logs + durable state; partials not logged)",
+ "session_id": "0bc0f967-5bbe-4834-8523-6f13a58288ff",
+ "duration_ms": 94848.369,
+ "steps": [
+  {
+   "t": 0.0,
+   "event": {
+    "event_type": "SESSION_STARTED",
+    "turn_id": null,
+    "timestamp": "2026-10-16T22:37:45.516859Z",
+    "payload": {
+     "kind": "SESSION_STARTED",
+     "revision": 1,
+     "next_turn_number": 1
+    }
+   }
+  },
+  {
+   "t": 0.0,
+   "trace": "after-turn-0"
+  },
+  {
+   "t": 29066.999,
+   "event": {
+    "event_type": "USER_SPEECH_STARTED",
+    "turn_id": null,
+    "timestamp": "2026-10-16T22:38:14.583858Z",
+    "payload": {
+     "kind": "USER_SPEECH_STARTED"
+    }
+   }
+  },
+  {
+   "t": 31875.478000000003,
+   "event": {
+    "event_type": "USER_SPEECH_ENDED",
+    "turn_id": null,
+    "timestamp": "2026-10-16T22:38:17.392337Z",
+    "payload": {
+     "kind": "USER_SPEECH_ENDED"
+    }
+   }
+  },
+  {
+   "t": 32318.549,
+   "event": {
+    "event_type": "STT_FINAL",
+    "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+    "timestamp": "2026-10-16T22:38:17.835408Z",
+    "payload": {
+     "kind": "STT_FINAL",
+     "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+     "transcript": "My AC isn't cooling properly."
+    }
+   }
+  },
+  {
+   "t": 32319.621,
+   "event": {
+    "event_type": "TURN_STARTED",
+    "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+    "timestamp": "2026-10-16T22:38:17.836480Z",
+    "payload": {
+     "kind": "TURN_STARTED",
+     "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0"
+    }
+   }
+  },
+  {
+   "t": 32523.100999999995,
+   "event": {
+    "event_type": "AGENT_RESPONSE",
+    "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+    "timestamp": "2026-10-16T22:38:18.039960Z",
+    "payload": {
+     "kind": "AGENT_RESPONSE",
+     "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+     "response_text": "What symptoms have you noticed?",
+     "replayed": false
+    }
+   }
+  },
+  {
+   "t": 32523.100999999995,
+   "event": {
+    "event_type": "TURN_COMPLETED",
+    "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+    "timestamp": "2026-10-16T22:38:18.039960Z",
+    "payload": {
+     "kind": "TURN_COMPLETED",
+     "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+     "turn_number": 1,
+     "revision": 3
+    }
+   }
+  },
+  {
+   "t": 32523.100999999995,
+   "trace": "after-turn-1"
+  },
+  {
+   "t": 34179.59,
+   "event": {
+    "event_type": "AGENT_AUDIO_OUTPUT_STARTED",
+    "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+    "timestamp": "2026-10-16T22:38:19.696449Z",
+    "payload": {
+     "kind": "AGENT_AUDIO_OUTPUT_STARTED",
+     "speech_output_id": "86594515-49de-4411-8fd7-e0c0007698df",
+     "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0"
+    }
+   }
+  },
+  {
+   "t": 35790.253,
+   "event": {
+    "event_type": "AGENT_AUDIO_OUTPUT_ENDED",
+    "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+    "timestamp": "2026-10-16T22:38:21.307112Z",
+    "payload": {
+     "kind": "AGENT_AUDIO_OUTPUT_ENDED",
+     "speech_output_id": "86594515-49de-4411-8fd7-e0c0007698df",
+     "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+     "status": "COMPLETED",
+     "code": null,
+     "accepted_audio_ms": 1811.1666666666667
+    }
+   }
+  },
+  {
+   "t": 36765.102,
+   "event": {
+    "event_type": "USER_SPEECH_STARTED",
+    "turn_id": null,
+    "timestamp": "2026-10-16T22:38:22.281961Z",
+    "payload": {
+     "kind": "USER_SPEECH_STARTED"
+    }
+   }
+  },
+  {
+   "t": 39964.901,
+   "event": {
+    "event_type": "USER_SPEECH_ENDED",
+    "turn_id": null,
+    "timestamp": "2026-10-16T22:38:25.481760Z",
+    "payload": {
+     "kind": "USER_SPEECH_ENDED"
+    }
+   }
+  },
+  {
+   "t": 40389.749,
+   "event": {
+    "event_type": "STT_FINAL",
+    "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+    "timestamp": "2026-10-16T22:38:25.906608Z",
+    "payload": {
+     "kind": "STT_FINAL",
+     "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+     "transcript": "My AC is only blowing warm air."
+    }
+   }
+  },
+  {
+   "t": 40391.344,
+   "event": {
+    "event_type": "TURN_STARTED",
+    "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+    "timestamp": "2026-10-16T22:38:25.908203Z",
+    "payload": {
+     "kind": "TURN_STARTED",
+     "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3"
+    }
+   }
+  },
+  {
+   "t": 43701.532999999996,
+   "event": {
+    "event_type": "AGENT_RESPONSE",
+    "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+    "timestamp": "2026-10-16T22:38:29.218392Z",
+    "payload": {
+     "kind": "AGENT_RESPONSE",
+     "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+     "response_text": "Would you like me to create the maintenance request?",
+     "replayed": false
+    }
+   }
+  },
+  {
+   "t": 43702.047999999995,
+   "event": {
+    "event_type": "TURN_COMPLETED",
+    "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+    "timestamp": "2026-10-16T22:38:29.218907Z",
+    "payload": {
+     "kind": "TURN_COMPLETED",
+     "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+     "turn_number": 2,
+     "revision": 5
+    }
+   }
+  },
+  {
+   "t": 43702.047999999995,
+   "trace": "after-turn-2"
+  },
+  {
+   "t": 43919.707,
+   "event": {
+    "event_type": "AGENT_AUDIO_OUTPUT_STARTED",
+    "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+    "timestamp": "2026-10-16T22:38:29.436566Z",
+    "payload": {
+     "kind": "AGENT_AUDIO_OUTPUT_STARTED",
+     "speech_output_id": "c568a9b0-4130-4ea0-aa9f-e1207a744a78",
+     "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3"
+    }
+   }
+  },
+  {
+   "t": 46376.185,
+   "event": {
+    "event_type": "AGENT_AUDIO_OUTPUT_ENDED",
+    "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+    "timestamp": "2026-10-16T22:38:31.893044Z",
+    "payload": {
+     "kind": "AGENT_AUDIO_OUTPUT_ENDED",
+     "speech_output_id": "c568a9b0-4130-4ea0-aa9f-e1207a744a78",
+     "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+     "status": "COMPLETED",
+     "code": null,
+     "accepted_audio_ms": 2647.0833333333335
+    }
+   }
+  },
+  {
+   "t": 47773.406,
+   "event": {
+    "event_type": "USER_SPEECH_STARTED",
+    "turn_id": null,
+    "timestamp": "2026-10-16T22:38:33.290265Z",
+    "payload": {
+     "kind": "USER_SPEECH_STARTED"
+    }
+   }
+  },
+  {
+   "t": 50968.156,
+   "event": {
+    "event_type": "USER_SPEECH_ENDED",
+    "turn_id": null,
+    "timestamp": "2026-10-16T22:38:36.485015Z",
+    "payload": {
+     "kind": "USER_SPEECH_ENDED"
+    }
+   }
+  },
+  {
+   "t": 51405.006,
+   "event": {
+    "event_type": "STT_FINAL",
+    "turn_id": "8366587b-9702-5333-89c4-4d265457279f",
+    "timestamp": "2026-10-16T22:38:36.921865Z",
+    "payload": {
+     "kind": "STT_FINAL",
+     "turn_id": "8366587b-9702-5333-89c4-4d265457279f",
+     "transcript": "Actually, water is pouring out of it."
+    }
+   }
+  },
+  {
+   "t": 51406.076,
+   "event": {
+    "event_type": "TURN_STARTED",
+    "turn_id": "8366587b-9702-5333-89c4-4d265457279f",
+    "timestamp": "2026-10-16T22:38:36.922935Z",
+    "payload": {
+     "kind": "TURN_STARTED",
+     "turn_id": "8366587b-9702-5333-89c4-4d265457279f"
+    }
+   }
+  },
+  {
+   "t": 53761.186,
+   "event": {
+    "event_type": "AGENT_RESPONSE",
+    "turn_id": "8366587b-9702-5333-89c4-4d265457279f",
+    "timestamp": "2026-10-16T22:38:39.278045Z",
+    "payload": {
+     "kind": "AGENT_RESPONSE",
+     "turn_id": "8366587b-9702-5333-89c4-4d265457279f",
+     "response_text": "Where is the issue happening?",
+     "replayed": false
+    }
+   }
+  },
+  {
+   "t": 53761.712,
+   "event": {
+    "event_type": "TURN_COMPLETED",
+    "turn_id": "8366587b-9702-5333-89c4-4d265457279f",
+    "timestamp": "2026-10-16T22:38:39.278571Z",
+    "payload": {
+     "kind": "TURN_COMPLETED",
+     "turn_id": "8366587b-9702-5333-89c4-4d265457279f",
+     "turn_number": 3,
+     "revision": 7
+    }
+   }
+  },
+  {
+   "t": 53761.712,
+   "trace": "after-turn-3"
+  },
+  {
+   "t": 53994.519,
+   "event": {
+    "event_type": "AGENT_AUDIO_OUTPUT_STARTED",
+    "turn_id": "8366587b-9702-5333-89c4-4d265457279f",
+    "timestamp": "2026-10-16T22:38:39.511378Z",
+    "payload": {
+     "kind": "AGENT_AUDIO_OUTPUT_STARTED",
+     "speech_output_id": "460f3fba-7e78-4549-a75c-796b84f7414f",
+     "turn_id": "8366587b-9702-5333-89c4-4d265457279f"
+    }
+   }
+  },
+  {
+   "t": 55335.481999999996,
+   "event": {
+    "event_type": "AGENT_AUDIO_OUTPUT_ENDED",
+    "turn_id": "8366587b-9702-5333-89c4-4d265457279f",
+    "timestamp": "2026-10-16T22:38:40.852341Z",
+    "payload": {
+     "kind": "AGENT_AUDIO_OUTPUT_ENDED",
+     "speech_output_id": "460f3fba-7e78-4549-a75c-796b84f7414f",
+     "turn_id": "8366587b-9702-5333-89c4-4d265457279f",
+     "status": "COMPLETED",
+     "code": null,
+     "accepted_audio_ms": 1532.5
+    }
+   }
+  },
+  {
+   "t": 56774.227000000006,
+   "event": {
+    "event_type": "USER_SPEECH_STARTED",
+    "turn_id": null,
+    "timestamp": "2026-10-16T22:38:42.291086Z",
+    "payload": {
+     "kind": "USER_SPEECH_STARTED"
+    }
+   }
+  },
+  {
+   "t": 59836.44,
+   "event": {
+    "event_type": "USER_SPEECH_ENDED",
+    "turn_id": null,
+    "timestamp": "2026-10-16T22:38:45.353299Z",
+    "payload": {
+     "kind": "USER_SPEECH_ENDED"
+    }
+   }
+  },
+  {
+   "t": 60265.600999999995,
+   "event": {
+    "event_type": "STT_FINAL",
+    "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7",
+    "timestamp": "2026-10-16T22:38:45.782460Z",
+    "payload": {
+     "kind": "STT_FINAL",
+     "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7",
+     "transcript": "Living room AC."
+    }
+   }
+  },
+  {
+   "t": 60266.686,
+   "event": {
+    "event_type": "TURN_STARTED",
+    "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7",
+    "timestamp": "2026-10-16T22:38:45.783545Z",
+    "payload": {
+     "kind": "TURN_STARTED",
+     "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7"
+    }
+   }
+  },
+  {
+   "t": 62213.335999999996,
+   "event": {
+    "event_type": "AGENT_RESPONSE",
+    "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7",
+    "timestamp": "2026-10-16T22:38:47.730195Z",
+    "payload": {
+     "kind": "AGENT_RESPONSE",
+     "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7",
+     "response_text": "What hazards have you noticed nearby?",
+     "replayed": false
+    }
+   }
+  },
+  {
+   "t": 62214.342000000004,
+   "event": {
+    "event_type": "TURN_COMPLETED",
+    "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7",
+    "timestamp": "2026-10-16T22:38:47.731201Z",
+    "payload": {
+     "kind": "TURN_COMPLETED",
+     "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7",
+     "turn_number": 4,
+     "revision": 9
+    }
+   }
+  },
+  {
+   "t": 62214.342000000004,
+   "trace": "after-turn-4"
+  },
+  {
+   "t": 62549.681,
+   "event": {
+    "event_type": "AGENT_AUDIO_OUTPUT_STARTED",
+    "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7",
+    "timestamp": "2026-10-16T22:38:48.066540Z",
+    "payload": {
+     "kind": "AGENT_AUDIO_OUTPUT_STARTED",
+     "speech_output_id": "45ee7d1f-4bdf-4f25-a2d8-4aa593c4f6e5",
+     "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7"
+    }
+   }
+  },
+  {
+   "t": 64730.108,
+   "event": {
+    "event_type": "AGENT_AUDIO_OUTPUT_ENDED",
+    "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7",
+    "timestamp": "2026-10-16T22:38:50.246967Z",
+    "payload": {
+     "kind": "AGENT_AUDIO_OUTPUT_ENDED",
+     "speech_output_id": "45ee7d1f-4bdf-4f25-a2d8-4aa593c4f6e5",
+     "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7",
+     "status": "COMPLETED",
+     "code": null,
+     "accepted_audio_ms": 2368.4166666666665
+    }
+   }
+  },
+  {
+   "t": 65709.1,
+   "event": {
+    "event_type": "USER_SPEECH_STARTED",
+    "turn_id": null,
+    "timestamp": "2026-10-16T22:38:51.225959Z",
+    "payload": {
+     "kind": "USER_SPEECH_STARTED"
+    }
+   }
+  },
+  {
+   "t": 68474.93900000001,
+   "event": {
+    "event_type": "USER_SPEECH_ENDED",
+    "turn_id": null,
+    "timestamp": "2026-10-16T22:38:53.991798Z",
+    "payload": {
+     "kind": "USER_SPEECH_ENDED"
+    }
+   }
+  },
+  {
+   "t": 68898.403,
+   "event": {
+    "event_type": "STT_FINAL",
+    "turn_id": "0d760ca9-67ce-5fd9-9de5-0526610a1e4d",
+    "timestamp": "2026-10-16T22:38:54.415262Z",
+    "payload": {
+     "kind": "STT_FINAL",
+     "turn_id": "0d760ca9-67ce-5fd9-9de5-0526610a1e4d",
+     "transcript": "No, nothing electrical."
+    }
+   }
+  },
+  {
+   "t": 68899.444,
+   "event": {
+    "event_type": "TURN_STARTED",
+    "turn_id": "0d760ca9-67ce-5fd9-9de5-0526610a1e4d",
+    "timestamp": "2026-10-16T22:38:54.416303Z",
+    "payload": {
+     "kind": "TURN_STARTED",
+     "turn_id": "0d760ca9-67ce-5fd9-9de5-0526610a1e4d"
+    }
+   }
+  },
+  {
+   "t": 71265.70700000001,
+   "event": {
+    "event_type": "AGENT_RESPONSE",
+    "turn_id": "0d760ca9-67ce-5fd9-9de5-0526610a1e4d",
+    "timestamp": "2026-10-16T22:38:56.782566Z",
+    "payload": {
+     "kind": "AGENT_RESPONSE",
+     "turn_id": "0d760ca9-67ce-5fd9-9de5-0526610a1e4d",
+     "response_text": "How severe is the issue right now?",
+     "replayed": false
+    }
+   }
+  },
+  {
+   "t": 71266.235,
+   "event": {
+    "event_type": "TURN_COMPLETED",
+    "turn_id": "0d760ca9-67ce-5fd9-9de5-0526610a1e4d",
+    "timestamp": "2026-10-16T22:38:56.783094Z",
+    "payload": {
+     "kind": "TURN_COMPLETED",
+     "turn_id": "0d760ca9-67ce-5fd9-9de5-0526610a1e4d",
+     "turn_number": 5,
+     "revision": 11
+    }
+   }
+  },
+  {
+   "t": 71266.235,
+   "trace": "after-turn-5"
+  },
+  {
+   "t": 71489.84,
+   "event": {
+    "event_type": "AGENT_AUDIO_OUTPUT_STARTED",
+    "turn_id": "0d760ca9-67ce-5fd9-9de5-0526610a1e4d",
+    "timestamp": "2026-10-16T22:38:57.006699Z",
+    "payload": {
+     "kind": "AGENT_AUDIO_OUTPUT_STARTED",
+     "speech_output_id": "552fa05b-8cf4-4651-88da-1c092447d243",
+     "turn_id": "0d760ca9-67ce-5fd9-9de5-0526610a1e4d"
+    }
+   }
+  },
+  {
+   "t": 73518.157,
+   "event": {
+    "event_type": "AGENT_AUDIO_OUTPUT_ENDED",
+    "turn_id": "0d760ca9-67ce-5fd9-9de5-0526610a1e4d",
+    "timestamp": "2026-10-16T22:38:59.035016Z",
+    "payload": {
+     "kind": "AGENT_AUDIO_OUTPUT_ENDED",
+     "speech_output_id": "552fa05b-8cf4-4651-88da-1c092447d243",
+     "turn_id": "0d760ca9-67ce-5fd9-9de5-0526610a1e4d",
+     "status": "COMPLETED",
+     "code": null,
+     "accepted_audio_ms": 2229.125
+    }
+   }
+  },
+  {
+   "t": 75169.235,
+   "event": {
+    "event_type": "USER_SPEECH_STARTED",
+    "turn_id": null,
+    "timestamp": "2026-10-16T22:39:00.686094Z",
+    "payload": {
+     "kind": "USER_SPEECH_STARTED"
+    }
+   }
+  },
+  {
+   "t": 76866.47499999999,
+   "event": {
+    "event_type": "USER_SPEECH_ENDED",
+    "turn_id": null,
+    "timestamp": "2026-10-16T22:39:02.383334Z",
+    "payload": {
+     "kind": "USER_SPEECH_ENDED"
+    }
+   }
+  },
+  {
+   "t": 77309.372,
+   "event": {
+    "event_type": "STT_FINAL",
+    "turn_id": "ab724734-3416-575c-942f-4cec58201801",
+    "timestamp": "2026-10-16T22:39:02.826231Z",
+    "payload": {
+     "kind": "STT_FINAL",
+     "turn_id": "ab724734-3416-575c-942f-4cec58201801",
+     "transcript": "It is continuous."
+    }
+   }
+  },
+  {
+   "t": 77309.901,
+   "event": {
+    "event_type": "TURN_STARTED",
+    "turn_id": "ab724734-3416-575c-942f-4cec58201801",
+    "timestamp": "2026-10-16T22:39:02.826760Z",
+    "payload": {
+     "kind": "TURN_STARTED",
+     "turn_id": "ab724734-3416-575c-942f-4cec58201801"
+    }
+   }
+  },
+  {
+   "t": 79387.158,
+   "event": {
+    "event_type": "AGENT_RESPONSE",
+    "turn_id": "ab724734-3416-575c-942f-4cec58201801",
+    "timestamp": "2026-10-16T22:39:04.904017Z",
+    "payload": {
+     "kind": "AGENT_RESPONSE",
+     "turn_id": "ab724734-3416-575c-942f-4cec58201801",
+     "response_text": "Your emergency incident was created. Reference: dc04a2d1-70e8-4e97-8faa-18d2992c47c6.",
+     "replayed": false
+    }
+   }
+  },
+  {
+   "t": 79387.682,
+   "event": {
+    "event_type": "TURN_COMPLETED",
+    "turn_id": "ab724734-3416-575c-942f-4cec58201801",
+    "timestamp": "2026-10-16T22:39:04.904541Z",
+    "payload": {
+     "kind": "TURN_COMPLETED",
+     "turn_id": "ab724734-3416-575c-942f-4cec58201801",
+     "turn_number": 6,
+     "revision": 13
+    }
+   }
+  },
+  {
+   "t": 79387.682,
+   "trace": "after-turn-6"
+  },
+  {
+   "t": 79642.876,
+   "event": {
+    "event_type": "AGENT_AUDIO_OUTPUT_STARTED",
+    "turn_id": "ab724734-3416-575c-942f-4cec58201801",
+    "timestamp": "2026-10-16T22:39:05.159735Z",
+    "payload": {
+     "kind": "AGENT_AUDIO_OUTPUT_STARTED",
+     "speech_output_id": "85f8cb89-8cdc-49bd-9f50-2c1b4d78196c",
+     "turn_id": "ab724734-3416-575c-942f-4cec58201801"
+    }
+   }
+  },
+  {
+   "t": 82175.42899999999,
+   "event": {
+    "event_type": "USER_SPEECH_STARTED",
+    "turn_id": null,
+    "timestamp": "2026-10-16T22:39:07.692288Z",
+    "payload": {
+     "kind": "USER_SPEECH_STARTED"
+    }
+   }
+  },
+  {
+   "t": 82189.324,
+   "event": {
+    "event_type": "AGENT_AUDIO_OUTPUT_ENDED",
+    "turn_id": "ab724734-3416-575c-942f-4cec58201801",
+    "timestamp": "2026-10-16T22:39:07.706183Z",
+    "payload": {
+     "kind": "AGENT_AUDIO_OUTPUT_ENDED",
+     "speech_output_id": "85f8cb89-8cdc-49bd-9f50-2c1b4d78196c",
+     "turn_id": "ab724734-3416-575c-942f-4cec58201801",
+     "status": "CANCELLED",
+     "code": "USER_INTERRUPTED",
+     "accepted_audio_ms": 2740.0
+    }
+   }
+  },
+  {
+   "t": 86867.422,
+   "event": {
+    "event_type": "USER_SPEECH_ENDED",
+    "turn_id": null,
+    "timestamp": "2026-10-16T22:39:12.384281Z",
+    "payload": {
+     "kind": "USER_SPEECH_ENDED"
+    }
+   }
+  },
+  {
+   "t": 87296.075,
+   "event": {
+    "event_type": "STT_FINAL",
+    "turn_id": "4ffbefdc-54b5-576c-a92e-94fa919c3830",
+    "timestamp": "2026-10-16T22:39:12.812934Z",
+    "payload": {
+     "kind": "STT_FINAL",
+     "turn_id": "4ffbefdc-54b5-576c-a92e-94fa919c3830",
+     "transcript": "Wait, the water is getting close to an electrical outlet."
+    }
+   }
+  },
+  {
+   "t": 87297.14300000001,
+   "event": {
+    "event_type": "TURN_STARTED",
+    "turn_id": "4ffbefdc-54b5-576c-a92e-94fa919c3830",
+    "timestamp": "2026-10-16T22:39:12.814002Z",
+    "payload": {
+     "kind": "TURN_STARTED",
+     "turn_id": "4ffbefdc-54b5-576c-a92e-94fa919c3830"
+    }
+   }
+  },
+  {
+   "t": 89101.63799999999,
+   "event": {
+    "event_type": "AGENT_RESPONSE",
+    "turn_id": "4ffbefdc-54b5-576c-a92e-94fa919c3830",
+    "timestamp": "2026-10-16T22:39:14.618497Z",
+    "payload": {
+     "kind": "AGENT_RESPONSE",
+     "turn_id": "4ffbefdc-54b5-576c-a92e-94fa919c3830",
+     "response_text": "Your emergency incident was updated with the reported information. Reference: dc04a2d1-70e8-4e97-8faa-18d2992c47c6.",
+     "replayed": false
+    }
+   }
+  },
+  {
+   "t": 89102.707,
+   "event": {
+    "event_type": "TURN_COMPLETED",
+    "turn_id": "4ffbefdc-54b5-576c-a92e-94fa919c3830",
+    "timestamp": "2026-10-16T22:39:14.619566Z",
+    "payload": {
+     "kind": "TURN_COMPLETED",
+     "turn_id": "4ffbefdc-54b5-576c-a92e-94fa919c3830",
+     "turn_number": 7,
+     "revision": 15
+    }
+   }
+  },
+  {
+   "t": 89102.707,
+   "trace": "after-turn-7"
+  },
+  {
+   "t": 89355.603,
+   "event": {
+    "event_type": "AGENT_AUDIO_OUTPUT_STARTED",
+    "turn_id": "4ffbefdc-54b5-576c-a92e-94fa919c3830",
+    "timestamp": "2026-10-16T22:39:14.872462Z",
+    "payload": {
+     "kind": "AGENT_AUDIO_OUTPUT_STARTED",
+     "speech_output_id": "d222df3c-c8d2-4311-a546-4a629a84ca74",
+     "turn_id": "4ffbefdc-54b5-576c-a92e-94fa919c3830"
+    }
+   }
+  },
+  {
+   "t": 94848.369,
+   "event": {
+    "event_type": "AGENT_AUDIO_OUTPUT_ENDED",
+    "turn_id": "4ffbefdc-54b5-576c-a92e-94fa919c3830",
+    "timestamp": "2026-10-16T22:39:20.365228Z",
+    "payload": {
+     "kind": "AGENT_AUDIO_OUTPUT_ENDED",
+     "speech_output_id": "d222df3c-c8d2-4311-a546-4a629a84ca74",
+     "turn_id": "4ffbefdc-54b5-576c-a92e-94fa919c3830",
+     "status": "COMPLETED",
+     "code": null,
+     "accepted_audio_ms": 5712.125
+    }
+   }
+  }
+ ],
+ "traces": {
+  "after-turn-0": {
+   "session_id": "0bc0f967-5bbe-4834-8523-6f13a58288ff",
+   "revision": 1,
+   "property_name": "Atlas Residence",
+   "unit_number": "204",
+   "turns": [],
+   "tool_calls": [],
+   "workflows": [
+    {
+     "workflow_key": "non_emergency_maintenance",
+     "status": "\u2014",
+     "current_step": null,
+     "service_key": "non_emergency_maintenance",
+     "updated_at": "2026-10-16T22:38:36.942311Z"
+    }
+   ],
+   "incidents": [],
+   "maintenance_requests": [],
+   "handoffs": []
+  },
+  "after-turn-1": {
+   "session_id": "0bc0f967-5bbe-4834-8523-6f13a58288ff",
+   "revision": 3,
+   "property_name": "Atlas Residence",
+   "unit_number": "204",
+   "turns": [
+    {
+     "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+     "turn_number": 1,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "non_emergency_maintenance",
+      "service_name": "Non-Emergency Maintenance",
+      "scenario_key": "ac_not_cooling"
+     },
+     "interpretation": null,
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 7.6141999452374876
+     }
+    }
+   ],
+   "tool_calls": [],
+   "workflows": [
+    {
+     "workflow_key": "non_emergency_maintenance",
+     "status": "\u2014",
+     "current_step": null,
+     "service_key": "non_emergency_maintenance",
+     "updated_at": "2026-10-16T22:38:36.942311Z"
+    }
+   ],
+   "incidents": [],
+   "maintenance_requests": [],
+   "handoffs": []
+  },
+  "after-turn-2": {
+   "session_id": "0bc0f967-5bbe-4834-8523-6f13a58288ff",
+   "revision": 5,
+   "property_name": "Atlas Residence",
+   "unit_number": "204",
+   "turns": [
+    {
+     "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+     "turn_number": 1,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "non_emergency_maintenance",
+      "service_name": "Non-Emergency Maintenance",
+      "scenario_key": "ac_not_cooling"
+     },
+     "interpretation": null,
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 7.6141999452374876
+     }
+    },
+    {
+     "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+     "turn_number": 2,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "non_emergency_maintenance",
+      "service_name": "Non-Emergency Maintenance",
+      "scenario_key": "ac_not_cooling"
+     },
+     "interpretation": "WORKFLOW_ANSWER",
+     "workflow_decision": "WAIT_FOR_CONFIRMATION",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2.597699989564717
+     }
+    }
+   ],
+   "tool_calls": [],
+   "workflows": [
+    {
+     "workflow_key": "non_emergency_maintenance",
+     "status": "\u2014",
+     "current_step": null,
+     "service_key": "non_emergency_maintenance",
+     "updated_at": "2026-10-16T22:38:36.942311Z"
+    }
+   ],
+   "incidents": [],
+   "maintenance_requests": [],
+   "handoffs": []
+  },
+  "after-turn-3": {
+   "session_id": "0bc0f967-5bbe-4834-8523-6f13a58288ff",
+   "revision": 7,
+   "property_name": "Atlas Residence",
+   "unit_number": "204",
+   "turns": [
+    {
+     "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+     "turn_number": 1,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "non_emergency_maintenance",
+      "service_name": "Non-Emergency Maintenance",
+      "scenario_key": "ac_not_cooling"
+     },
+     "interpretation": null,
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 7.6141999452374876
+     }
+    },
+    {
+     "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+     "turn_number": 2,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "non_emergency_maintenance",
+      "service_name": "Non-Emergency Maintenance",
+      "scenario_key": "ac_not_cooling"
+     },
+     "interpretation": "WORKFLOW_ANSWER",
+     "workflow_decision": "WAIT_FOR_CONFIRMATION",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2.597699989564717
+     }
+    },
+    {
+     "turn_id": "8366587b-9702-5333-89c4-4d265457279f",
+     "turn_number": 3,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "emergency_maintenance",
+      "service_name": "Emergency Maintenance",
+      "scenario_key": "active_flooding"
+     },
+     "interpretation": null,
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2221.0453000152484
+     }
+    }
+   ],
+   "tool_calls": [],
+   "workflows": [
+    {
+     "workflow_key": "non_emergency_maintenance",
+     "status": "ESCALATED",
+     "current_step": "superseded",
+     "service_key": "non_emergency_maintenance",
+     "updated_at": "2026-10-16T22:38:36.942311Z"
+    },
+    {
+     "workflow_key": "emergency_maintenance",
+     "status": "\u2014",
+     "current_step": null,
+     "service_key": "emergency_maintenance",
+     "updated_at": "2026-10-16T22:39:12.831681Z"
+    }
+   ],
+   "incidents": [],
+   "maintenance_requests": [],
+   "handoffs": []
+  },
+  "after-turn-4": {
+   "session_id": "0bc0f967-5bbe-4834-8523-6f13a58288ff",
+   "revision": 9,
+   "property_name": "Atlas Residence",
+   "unit_number": "204",
+   "turns": [
+    {
+     "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+     "turn_number": 1,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "non_emergency_maintenance",
+      "service_name": "Non-Emergency Maintenance",
+      "scenario_key": "ac_not_cooling"
+     },
+     "interpretation": null,
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 7.6141999452374876
+     }
+    },
+    {
+     "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+     "turn_number": 2,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "non_emergency_maintenance",
+      "service_name": "Non-Emergency Maintenance",
+      "scenario_key": "ac_not_cooling"
+     },
+     "interpretation": "WORKFLOW_ANSWER",
+     "workflow_decision": "WAIT_FOR_CONFIRMATION",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2.597699989564717
+     }
+    },
+    {
+     "turn_id": "8366587b-9702-5333-89c4-4d265457279f",
+     "turn_number": 3,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "emergency_maintenance",
+      "service_name": "Emergency Maintenance",
+      "scenario_key": "active_flooding"
+     },
+     "interpretation": null,
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2221.0453000152484
+     }
+    },
+    {
+     "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7",
+     "turn_number": 4,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "emergency_maintenance",
+      "service_name": "Emergency Maintenance",
+      "scenario_key": "active_flooding"
+     },
+     "interpretation": "WORKFLOW_ANSWER",
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2.0397999905981123
+     }
+    }
+   ],
+   "tool_calls": [],
+   "workflows": [
+    {
+     "workflow_key": "non_emergency_maintenance",
+     "status": "ESCALATED",
+     "current_step": "superseded",
+     "service_key": "non_emergency_maintenance",
+     "updated_at": "2026-10-16T22:38:36.942311Z"
+    },
+    {
+     "workflow_key": "emergency_maintenance",
+     "status": "\u2014",
+     "current_step": null,
+     "service_key": "emergency_maintenance",
+     "updated_at": "2026-10-16T22:39:12.831681Z"
+    }
+   ],
+   "incidents": [],
+   "maintenance_requests": [],
+   "handoffs": []
+  },
+  "after-turn-5": {
+   "session_id": "0bc0f967-5bbe-4834-8523-6f13a58288ff",
+   "revision": 11,
+   "property_name": "Atlas Residence",
+   "unit_number": "204",
+   "turns": [
+    {
+     "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+     "turn_number": 1,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "non_emergency_maintenance",
+      "service_name": "Non-Emergency Maintenance",
+      "scenario_key": "ac_not_cooling"
+     },
+     "interpretation": null,
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 7.6141999452374876
+     }
+    },
+    {
+     "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+     "turn_number": 2,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "non_emergency_maintenance",
+      "service_name": "Non-Emergency Maintenance",
+      "scenario_key": "ac_not_cooling"
+     },
+     "interpretation": "WORKFLOW_ANSWER",
+     "workflow_decision": "WAIT_FOR_CONFIRMATION",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2.597699989564717
+     }
+    },
+    {
+     "turn_id": "8366587b-9702-5333-89c4-4d265457279f",
+     "turn_number": 3,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "emergency_maintenance",
+      "service_name": "Emergency Maintenance",
+      "scenario_key": "active_flooding"
+     },
+     "interpretation": null,
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2221.0453000152484
+     }
+    },
+    {
+     "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7",
+     "turn_number": 4,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "emergency_maintenance",
+      "service_name": "Emergency Maintenance",
+      "scenario_key": "active_flooding"
+     },
+     "interpretation": "WORKFLOW_ANSWER",
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2.0397999905981123
+     }
+    },
+    {
+     "turn_id": "0d760ca9-67ce-5fd9-9de5-0526610a1e4d",
+     "turn_number": 5,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "emergency_maintenance",
+      "service_name": "Emergency Maintenance",
+      "scenario_key": "active_flooding"
+     },
+     "interpretation": "WORKFLOW_ANSWER",
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2.07580003188923
+     }
+    }
+   ],
+   "tool_calls": [],
+   "workflows": [
+    {
+     "workflow_key": "non_emergency_maintenance",
+     "status": "ESCALATED",
+     "current_step": "superseded",
+     "service_key": "non_emergency_maintenance",
+     "updated_at": "2026-10-16T22:38:36.942311Z"
+    },
+    {
+     "workflow_key": "emergency_maintenance",
+     "status": "\u2014",
+     "current_step": null,
+     "service_key": "emergency_maintenance",
+     "updated_at": "2026-10-16T22:39:12.831681Z"
+    }
+   ],
+   "incidents": [],
+   "maintenance_requests": [],
+   "handoffs": []
+  },
+  "after-turn-6": {
+   "session_id": "0bc0f967-5bbe-4834-8523-6f13a58288ff",
+   "revision": 13,
+   "property_name": "Atlas Residence",
+   "unit_number": "204",
+   "turns": [
+    {
+     "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+     "turn_number": 1,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "non_emergency_maintenance",
+      "service_name": "Non-Emergency Maintenance",
+      "scenario_key": "ac_not_cooling"
+     },
+     "interpretation": null,
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 7.6141999452374876
+     }
+    },
+    {
+     "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+     "turn_number": 2,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "non_emergency_maintenance",
+      "service_name": "Non-Emergency Maintenance",
+      "scenario_key": "ac_not_cooling"
+     },
+     "interpretation": "WORKFLOW_ANSWER",
+     "workflow_decision": "WAIT_FOR_CONFIRMATION",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2.597699989564717
+     }
+    },
+    {
+     "turn_id": "8366587b-9702-5333-89c4-4d265457279f",
+     "turn_number": 3,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "emergency_maintenance",
+      "service_name": "Emergency Maintenance",
+      "scenario_key": "active_flooding"
+     },
+     "interpretation": null,
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2221.0453000152484
+     }
+    },
+    {
+     "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7",
+     "turn_number": 4,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "emergency_maintenance",
+      "service_name": "Emergency Maintenance",
+      "scenario_key": "active_flooding"
+     },
+     "interpretation": "WORKFLOW_ANSWER",
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2.0397999905981123
+     }
+    },
+    {
+     "turn_id": "0d760ca9-67ce-5fd9-9de5-0526610a1e4d",
+     "turn_number": 5,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "emergency_maintenance",
+      "service_name": "Emergency Maintenance",
+      "scenario_key": "active_flooding"
+     },
+     "interpretation": "WORKFLOW_ANSWER",
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2.07580003188923
+     }
+    },
+    {
+     "turn_id": "ab724734-3416-575c-942f-4cec58201801",
+     "turn_number": 6,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "emergency_maintenance",
+      "service_name": "Emergency Maintenance",
+      "scenario_key": "active_flooding"
+     },
+     "interpretation": "WORKFLOW_ANSWER",
+     "workflow_decision": "REQUEST_ACTION",
+     "action": {
+      "action_id": "6e3d1259-3814-574d-acee-43d295877609",
+      "action_type": "CREATE_EMERGENCY_INCIDENT"
+     },
+     "execution_started": true,
+     "tool_results": [
+      {
+       "execution_id": "dc68a5ec-5d07-4477-af41-39a8ab1c9129",
+       "action_request_id": "6e3d1259-3814-574d-acee-43d295877609",
+       "action_type": "CREATE_EMERGENCY_INCIDENT",
+       "status": "SUCCEEDED",
+       "operation_id": "dc04a2d1-70e8-4e97-8faa-18d2992c47c6",
+       "replayed": false,
+       "duration_ms": 80.4828999680467,
+       "error_code": null,
+       "result_revision": 1
+      }
+     ],
+     "timings_ms": {
+      "routing": 1.6540000215172768
+     }
+    }
+   ],
+   "tool_calls": [
+    {
+     "execution_id": "dc68a5ec-5d07-4477-af41-39a8ab1c9129",
+     "action_type": "CREATE_EMERGENCY_INCIDENT",
+     "status": "SUCCEEDED",
+     "attempts": 1,
+     "replays": 0,
+     "operation_id": "dc04a2d1-70e8-4e97-8faa-18d2992c47c6",
+     "duration_ms": 80.4828999680467,
+     "result_revision": 1,
+     "completed_at": "2026-10-16T22:39:04.832363Z"
+    }
+   ],
+   "workflows": [
+    {
+     "workflow_key": "non_emergency_maintenance",
+     "status": "ESCALATED",
+     "current_step": "superseded",
+     "service_key": "non_emergency_maintenance",
+     "updated_at": "2026-10-16T22:38:36.942311Z"
+    },
+    {
+     "workflow_key": "emergency_maintenance",
+     "status": "COMPLETED",
+     "current_step": "operation_committed",
+     "service_key": "emergency_maintenance",
+     "updated_at": "2026-10-16T22:39:12.831681Z"
+    }
+   ],
+   "incidents": [
+    {
+     "incident_id": "dc04a2d1-70e8-4e97-8faa-18d2992c47c6",
+     "status": "OPEN",
+     "revision": 1,
+     "scenario_key": "active_flooding",
+     "location_detail": "Living room AC.",
+     "hazard_detail": "No, nothing electrical.",
+     "severity_detail": "It is continuous."
+    }
+   ],
+   "maintenance_requests": [],
+   "handoffs": []
+  },
+  "after-turn-7": {
+   "session_id": "0bc0f967-5bbe-4834-8523-6f13a58288ff",
+   "revision": 15,
+   "property_name": "Atlas Residence",
+   "unit_number": "204",
+   "turns": [
+    {
+     "turn_id": "33856d3c-56bc-5a8f-ab61-e3d0221b96b0",
+     "turn_number": 1,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "non_emergency_maintenance",
+      "service_name": "Non-Emergency Maintenance",
+      "scenario_key": "ac_not_cooling"
+     },
+     "interpretation": null,
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 7.6141999452374876
+     }
+    },
+    {
+     "turn_id": "5ce50825-c0bf-5a86-b8e9-e32fac167bb3",
+     "turn_number": 2,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "non_emergency_maintenance",
+      "service_name": "Non-Emergency Maintenance",
+      "scenario_key": "ac_not_cooling"
+     },
+     "interpretation": "WORKFLOW_ANSWER",
+     "workflow_decision": "WAIT_FOR_CONFIRMATION",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2.597699989564717
+     }
+    },
+    {
+     "turn_id": "8366587b-9702-5333-89c4-4d265457279f",
+     "turn_number": 3,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "emergency_maintenance",
+      "service_name": "Emergency Maintenance",
+      "scenario_key": "active_flooding"
+     },
+     "interpretation": null,
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2221.0453000152484
+     }
+    },
+    {
+     "turn_id": "e5d5149b-4405-570d-8710-4006cf176da7",
+     "turn_number": 4,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "emergency_maintenance",
+      "service_name": "Emergency Maintenance",
+      "scenario_key": "active_flooding"
+     },
+     "interpretation": "WORKFLOW_ANSWER",
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2.0397999905981123
+     }
+    },
+    {
+     "turn_id": "0d760ca9-67ce-5fd9-9de5-0526610a1e4d",
+     "turn_number": 5,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "emergency_maintenance",
+      "service_name": "Emergency Maintenance",
+      "scenario_key": "active_flooding"
+     },
+     "interpretation": "WORKFLOW_ANSWER",
+     "workflow_decision": "ASK_USER",
+     "action": null,
+     "execution_started": false,
+     "tool_results": [],
+     "timings_ms": {
+      "routing": 2.07580003188923
+     }
+    },
+    {
+     "turn_id": "ab724734-3416-575c-942f-4cec58201801",
+     "turn_number": 6,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "emergency_maintenance",
+      "service_name": "Emergency Maintenance",
+      "scenario_key": "active_flooding"
+     },
+     "interpretation": "WORKFLOW_ANSWER",
+     "workflow_decision": "REQUEST_ACTION",
+     "action": {
+      "action_id": "6e3d1259-3814-574d-acee-43d295877609",
+      "action_type": "CREATE_EMERGENCY_INCIDENT"
+     },
+     "execution_started": true,
+     "tool_results": [
+      {
+       "execution_id": "dc68a5ec-5d07-4477-af41-39a8ab1c9129",
+       "action_request_id": "6e3d1259-3814-574d-acee-43d295877609",
+       "action_type": "CREATE_EMERGENCY_INCIDENT",
+       "status": "SUCCEEDED",
+       "operation_id": "dc04a2d1-70e8-4e97-8faa-18d2992c47c6",
+       "replayed": false,
+       "duration_ms": 80.4828999680467,
+       "error_code": null,
+       "result_revision": 1
+      }
+     ],
+     "timings_ms": {
+      "routing": 1.6540000215172768
+     }
+    },
+    {
+     "turn_id": "4ffbefdc-54b5-576c-a92e-94fa919c3830",
+     "turn_number": 7,
+     "route": {
+      "decision": "ROUTED",
+      "service_key": "emergency_maintenance",
+      "service_name": "Emergency Maintenance",
+      "scenario_key": "electrical_hazard"
+     },
+     "interpretation": null,
+     "workflow_decision": "REQUEST_ACTION",
+     "action": {
+      "action_id": "4278d8aa-918b-5c2a-a53a-6b8225ff3b34",
+      "action_type": "UPDATE_EMERGENCY_INCIDENT"
+     },
+     "execution_started": true,
+     "tool_results": [
+      {
+       "execution_id": "08b10eb6-19c3-4434-b9bd-25de6bf320e3",
+       "action_request_id": "4278d8aa-918b-5c2a-a53a-6b8225ff3b34",
+       "action_type": "UPDATE_EMERGENCY_INCIDENT",
+       "status": "SUCCEEDED",
+       "operation_id": "dc04a2d1-70e8-4e97-8faa-18d2992c47c6",
+       "replayed": false,
+       "duration_ms": 42.84319997532293,
+       "error_code": null,
+       "result_revision": 2
+      }
+     ],
+     "timings_ms": {
+      "routing": 1572.8224000195041
+     }
+    }
+   ],
+   "tool_calls": [
+    {
+     "execution_id": "dc68a5ec-5d07-4477-af41-39a8ab1c9129",
+     "action_type": "CREATE_EMERGENCY_INCIDENT",
+     "status": "SUCCEEDED",
+     "attempts": 1,
+     "replays": 0,
+     "operation_id": "dc04a2d1-70e8-4e97-8faa-18d2992c47c6",
+     "duration_ms": 80.4828999680467,
+     "result_revision": 1,
+     "completed_at": "2026-10-16T22:39:04.832363Z"
+    },
+    {
+     "execution_id": "08b10eb6-19c3-4434-b9bd-25de6bf320e3",
+     "action_type": "UPDATE_EMERGENCY_INCIDENT",
+     "status": "SUCCEEDED",
+     "attempts": 1,
+     "replays": 0,
+     "operation_id": "dc04a2d1-70e8-4e97-8faa-18d2992c47c6",
+     "duration_ms": 42.84319997532293,
+     "result_revision": 2,
+     "completed_at": "2026-10-16T22:39:14.538593Z"
+    }
+   ],
+   "workflows": [
+    {
+     "workflow_key": "non_emergency_maintenance",
+     "status": "ESCALATED",
+     "current_step": "superseded",
+     "service_key": "non_emergency_maintenance",
+     "updated_at": "2026-10-16T22:38:36.942311Z"
+    },
+    {
+     "workflow_key": "emergency_maintenance",
+     "status": "COMPLETED",
+     "current_step": "operation_committed",
+     "service_key": "emergency_maintenance",
+     "updated_at": "2026-10-16T22:39:12.831681Z"
+    }
+   ],
+   "incidents": [
+    {
+     "incident_id": "dc04a2d1-70e8-4e97-8faa-18d2992c47c6",
+     "status": "OPEN",
+     "revision": 2,
+     "scenario_key": "active_flooding",
+     "location_detail": "Living room AC.",
+     "hazard_detail": "Wait, the water is getting close to an electrical outlet.",
+     "severity_detail": "It is continuous."
+    }
+   ],
+   "maintenance_requests": [],
+   "handoffs": []
+  }
+ }
+}

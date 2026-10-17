@@ -1,93 +1,171 @@
 <!doctype html>
 <html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Relay · Voice demo</title>
-<style>
-body{font:17px system-ui;max-width:800px;margin:48px auto;padding:0 24px;background:#f6f7f8;color:#182b32}
-label{display:block;margin:16px 0}input,button{font:inherit;padding:10px}input{width:95%}
-button{cursor:pointer;margin:8px 8px 8px 0}pre{white-space:pre-wrap;background:white;padding:20px;border-radius:8px}
-#audiolog{font-size:14px;color:#46606a}
-</style>
-<h1>Relay · Voice</h1>
-<p>Internal demo. Your microphone is sent to LiveKit and AssemblyAI. Relay replies in text; when speech output is enabled on the server, it also speaks. The text is authoritative. Use headphones to avoid feeding Relay's voice back into the microphone.</p>
-<label>Relay backend <input id="base" value="http://127.0.0.1:8000"></label>
-<label>Existing conversation session UUID <input id="session" autocomplete="off"></label>
-<button id="start">Connect microphone</button><button id="stop" disabled>Disconnect</button>
-<button id="enableAudio" hidden>Enable Relay audio</button>
-<p id="status" role="status">Disconnected</p><p id="partial"></p>
-<p id="voice" role="status"></p>
-<pre id="output" aria-live="polite"></pre>
-<audio id="agent" autoplay></audio>
-<pre id="audiolog" aria-label="Voice timing diagnostics"></pre>
-<script type="module">
-import {Room, RoomEvent} from 'https://cdn.jsdelivr.net/npm/livekit-client@2.22.4/+esm';
-import {AgentAudio, describeAudioEvent} from './relay-audio.mjs';
-const byId = id => document.getElementById(id);
-let socket, room, agent, sequence = 0, currentSession, origin = 0;
-function event(kind) {
-  socket.send(JSON.stringify({session_id:currentSession,sequence:++sequence,event_type:kind,payload:{kind}}));
-}
-// Local monotonic diagnostics only; these are never compared with server clocks.
-function timeline(entry) {
-  const ms = Math.round(entry.at - origin);
-  const output = entry.speech_output_id ? ' output='+entry.speech_output_id : '';
-  byId('audiolog').textContent += `+${ms} ms ${entry.kind}${output}\n`;
-}
-function playbackState() {
-  byId('enableAudio').hidden = !room || room.canPlaybackAudio;
-}
-async function stop() {
-  const oldRoom = room; room = undefined;
-  if(oldRoom) await oldRoom.disconnect();
-  if(agent) {agent.close(); agent = undefined;}
-  const oldSocket = socket; socket = undefined;
-  if(oldSocket) oldSocket.close();
-  byId('enableAudio').hidden=true;
-  byId('start').disabled=false;byId('stop').disabled=true;byId('status').textContent='Disconnected';
-}
-byId('stop').onclick=stop;
-byId('enableAudio').onclick=async () => {if(room) {await room.startAudio(); playbackState();}};
-byId('agent').addEventListener('playing',()=>{if(agent) agent.onPlaying();});
-byId('start').onclick=async () => {
-  byId('start').disabled=true;byId('stop').disabled=false;
-  const base=byId('base').value.replace(/\/$/,'');currentSession=byId('session').value.trim();
-  sequence=0;origin=performance.now();byId('audiolog').textContent='';byId('voice').textContent='';
-  agent=new AgentAudio({sessionId:currentSession, element:byId('agent'), log:timeline});
-  try {
-    socket=new WebSocket(base.replace(/^http/,'ws')+'/api/realtime/'+encodeURIComponent(currentSession));
-    await new Promise((resolve,reject)=>{socket.onopen=resolve;socket.onerror=reject;});
-    const started=new Promise((resolve,reject)=>{
-      socket.onmessage=message=>{
-        const e=JSON.parse(message.data), p=e.payload;
-        if(e.event_type==='SESSION_STARTED') resolve();
-        if(e.event_type==='ERROR') {byId('status').textContent=p.code;reject(new Error(p.code));}
-        if(e.event_type==='STT_PARTIAL') byId('partial').textContent=p.transcript;
-        if(e.event_type==='STT_FINAL') {byId('partial').textContent='';byId('output').textContent+='You: '+p.transcript+'\n';}
-        if(e.event_type==='AGENT_RESPONSE') byId('output').textContent+='Relay: '+p.response_text+'\n\n';
-        if(e.event_type==='STT_FAILED') {void stop().then(()=>byId('status').textContent=p.message);}
-        const audio = agent ? agent.handleServerEvent(e) : null;
-        if(audio) byId('voice').textContent=describeAudioEvent(audio);
-      };
-      socket.onclose=()=>{reject(new Error('Control connection closed'));void stop();};
-    });
-    event('SESSION_START');await started;
-    const response=await fetch(base+'/api/voice/'+encodeURIComponent(currentSession)+'/token',{
-      method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    if(!response.ok) throw new Error('Voice admission failed: '+response.status);
-    const admission=await response.json();
-    room=new Room();room.on(RoomEvent.Disconnected,()=>void stop());
-    // Only Relay's agent track for this session is attached; anything else is ignored.
-    room.on(RoomEvent.TrackSubscribed,(track,publication,participant)=>{if(agent) agent.onTrackSubscribed(track,publication,participant);});
-    room.on(RoomEvent.TrackUnsubscribed,track=>{if(agent) agent.onTrackUnsubscribed(track);});
-    room.on(RoomEvent.ActiveSpeakersChanged,speakers=>{if(agent) agent.onActiveSpeakers(speakers);});
-    room.on(RoomEvent.AudioPlaybackStatusChanged,playbackState);
-    await room.connect(admission.livekit_url,admission.participant_token);
-    await room.localParticipant.setMicrophoneEnabled(true);
-    playbackState();
-    byId('status').textContent='Microphone connected — responses appear below';
-  } catch(error) {await stop();byId('status').textContent=error.message || 'Connection failed';}
-};
-window.addEventListener('pagehide',()=>{if(room) void room.disconnect();if(agent) agent.close();if(socket) socket.close();});
-</script>
+<title>Relay · Real-Time Voice Agent Runtime</title>
+<link rel="icon" type="image/png" href="./assets/relay-mark.png">
+<link rel="stylesheet" href="./relay-voice.css">
+</head>
+<body>
+<div class="app" id="app" data-voice="DISCONNECTED">
+  <header class="topbar">
+    <div class="brand">
+      <img class="brand-logo" src="./assets/relay-logo.png" alt="Relay" width="133" height="30">
+      <span class="brand-divider" aria-hidden="true"></span>
+      <div class="brand-sub">Real-Time Voice Agent Runtime</div>
+    </div>
+    <div class="topbar-meta">
+      <span class="pill" id="connectionPill"><span class="dot"></span><span id="connectionText">Disconnected</span></span>
+      <span class="meta"><span class="meta-label">Property</span><span id="propertyName">—</span></span>
+      <span class="meta"><span class="meta-label">Unit</span><span id="unitNumber">—</span></span>
+      <span class="meta mono" id="sessionShort" title="Conversation session">—</span>
+      <button class="icon-button" id="openSettings" aria-label="Session setup" aria-haspopup="dialog" aria-controls="settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="banner" id="banner" role="alert" hidden></div>
+
+  <main class="workspace">
+    <section class="call" aria-label="Call experience">
+      <div class="voice-stage">
+        <div class="voice-head">
+          <span class="section-label">Call</span>
+          <span class="duration mono" id="duration" aria-label="Session duration">00:00</span>
+        </div>
+        <div class="wave-wrap">
+          <div class="stage-glow" aria-hidden="true"></div>
+          <img class="idle-mark" src="./assets/relay-mark-256.png" alt="" aria-hidden="true" width="128" height="128">
+          <canvas id="wave" class="wave" aria-hidden="true"></canvas>
+        </div>
+        <div class="voice-state" role="status" aria-live="polite">
+          <span class="state-dot"></span><span id="voiceText">Ready for a voice session</span>
+        </div>
+        <div class="voice-sub" id="voiceSub">Microphone audio goes to LiveKit and AssemblyAI. Use headphones.</div>
+        <div class="controls">
+          <button class="primary" id="start">Connect microphone</button>
+          <button class="secondary" id="mute" hidden aria-pressed="false">Mute</button>
+          <button class="secondary" id="enableAudio" hidden>Enable Relay audio</button>
+          <button class="ghost" id="stop" hidden>End session</button>
+        </div>
+      </div>
+
+      <div class="conversation">
+        <div class="conversation-head"><span class="section-label">Conversation</span><span class="hint">Text is authoritative</span></div>
+        <ol class="transcript" id="transcript" aria-live="polite" aria-label="Conversation transcript"></ol>
+        <div class="partial" id="partial" aria-hidden="true"></div>
+        <div class="empty" id="transcriptEmpty">No conversation yet. Connect the microphone and speak.</div>
+      </div>
+    </section>
+
+    <aside class="trace" aria-label="System trace">
+      <div class="trace-head"><span class="section-label">System trace</span><span class="hint" id="traceHint">Waiting for session activity</span></div>
+
+      <div class="card runtime" id="runtimeCard" aria-label="Runtime">
+        <div class="card-title">Runtime</div>
+        <dl class="kv grid-6">
+          <div><dt>State</dt><dd id="rtState">—</dd></div>
+          <div><dt>Turn</dt><dd id="rtTurn">—</dd></div>
+          <div><dt>Revision</dt><dd id="rtRevision">—</dd></div>
+          <div><dt>Input</dt><dd id="rtInput">—</dd></div>
+          <div><dt>STT</dt><dd id="rtStt">—</dd></div>
+          <div><dt>Output</dt><dd id="rtOutput">—</dd></div>
+        </dl>
+      </div>
+
+      <div class="card" id="routeCard">
+        <div class="card-title">Route &amp; workflow</div>
+        <div class="placeholder" id="routeEmpty">No routed turn yet</div>
+        <dl class="kv grid-3" id="routeBody" hidden>
+          <div><dt>Route</dt><dd id="rtRoute">—</dd></div>
+          <div><dt>Scenario</dt><dd class="mono" id="rtScenario">—</dd></div>
+          <div><dt>Workflow</dt><dd class="mono" id="rtWorkflow">—</dd></div>
+          <div><dt>Step</dt><dd class="mono" id="rtStep">—</dd></div>
+          <div><dt>Interpretation</dt><dd class="mono" id="rtInterpretation">—</dd></div>
+          <div><dt>Decision</dt><dd class="mono" id="rtDecision">—</dd></div>
+        </dl>
+      </div>
+
+      <div class="card bargein" id="bargeCard" hidden>
+        <div class="card-title">Barge-in</div>
+        <div class="split">
+          <div class="split-col">
+            <div class="split-label">Voice output <span class="badge wait" id="bargeVoice">⨯ USER_INTERRUPTED</span></div>
+            <div class="split-meta mono" id="bargeVoiceMeta"></div>
+          </div>
+          <div class="split-col">
+            <div class="split-label">Business result <span class="badge" id="bargeBusiness">Checking…</span></div>
+            <div class="split-meta mono" id="bargeBusinessMeta"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="toolCard">
+        <div class="card-title">Tool execution</div>
+        <div class="placeholder" id="toolEmpty">No action requested yet</div>
+        <div id="toolBody" hidden>
+          <div class="tool-head"><span class="tool-name mono" id="toolName"></span><span class="badge" id="toolStatus"></span></div>
+          <dl class="kv grid-6">
+            <div><dt>Reference</dt><dd class="mono" id="toolRef">—</dd></div>
+            <div><dt>Revision</dt><dd class="mono" id="toolRevision">—</dd></div>
+            <div><dt>Attempts</dt><dd class="mono" id="toolAttempts">—</dd></div>
+            <div><dt>Replays</dt><dd class="mono" id="toolReplays">—</dd></div>
+            <div><dt>Duration</dt><dd class="mono" id="toolDuration">—</dd></div>
+            <div><dt>Turn</dt><dd class="mono" id="toolTurn">—</dd></div>
+          </dl>
+        </div>
+      </div>
+
+      <div class="card" id="durableCard">
+        <div class="card-title">Durable state</div>
+        <div class="placeholder" id="durableEmpty">No business record in this session</div>
+        <div id="durableBody" hidden>
+          <div class="tool-head"><span class="mono" id="durableRef"></span><button class="copy" id="durableCopy" aria-label="Copy full reference">Copy</button><span class="badge ok" id="durableStatus"></span></div>
+          <dl class="kv grid-3">
+            <div><dt>Revision</dt><dd class="mono" id="durableRevision">—</dd></div>
+            <div><dt>Scenario</dt><dd class="mono" id="durableScenario">—</dd></div>
+            <div><dt>Severity</dt><dd id="durableSeverity">—</dd></div>
+            <div><dt>Location</dt><dd id="durableLocation">—</dd></div>
+            <div class="span-2"><dt>Hazard</dt><dd id="durableHazard">—</dd></div>
+          </dl>
+        </div>
+      </div>
+
+      <div class="card timeline-card">
+        <div class="card-title">Event timeline</div>
+        <ol class="timeline" id="timeline" aria-label="Event timeline"></ol>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="metrics" aria-label="Runtime metrics">
+    <div class="metric"><span class="metric-label">Admission</span><span class="metric-value mono" id="mAdmission">—</span></div>
+    <div class="metric"><span class="metric-label">Routing</span><span class="metric-value mono" id="mRouting">—</span></div>
+    <div class="metric"><span class="metric-label">Tool</span><span class="metric-value mono" id="mTool">—</span></div>
+    <div class="metric"><span class="metric-label">First audio</span><span class="metric-value mono" id="mFirstAudio">—</span></div>
+    <div class="metric"><span class="metric-label">Output</span><span class="metric-value mono" id="mOutput">—</span></div>
+    <div class="metric status"><span class="metric-label">Status</span><span class="metric-value mono" id="mStatus">OFFLINE</span></div>
+    <div class="replay-tag" id="replayTag" hidden></div>
+  </footer>
+
+  <dialog class="drawer" id="settings" aria-label="Session setup">
+    <form method="dialog" class="drawer-body">
+      <div class="drawer-head"><span class="card-title">Session setup</span><button class="icon-button" value="close" aria-label="Close setup">✕</button></div>
+      <label>Relay backend <input id="base" value="http://127.0.0.1:8000" autocomplete="off" spellcheck="false"></label>
+      <label>Existing conversation session UUID <input id="session" autocomplete="off" spellcheck="false"></label>
+      <div class="drawer-row">
+        <select id="resident" aria-label="Demo resident"><option value="Ikram">Ikram · Atlas Residence</option><option value="Alex">Alex · Palm Heights</option></select>
+        <button type="button" class="secondary" id="createSession">Start demo session</button>
+      </div>
+      <p class="drawer-note" id="setupNote">Internal demo. Your microphone is sent to LiveKit and AssemblyAI; Relay replies in text and, when enabled on the server, in voice.</p>
+      <details class="diagnostics"><summary>Audio diagnostics (local clock)</summary><pre id="audiolog" aria-label="Voice timing diagnostics"></pre><p class="drawer-note" id="voice" role="status"></p></details>
+    </form>
+  </dialog>
+
+  <audio id="agent" autoplay></audio>
+</div>
+<script type="module" src="./relay-voice.mjs"></script>
+</body>
 </html>
