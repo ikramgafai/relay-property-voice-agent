@@ -23,9 +23,8 @@
 
 ![Relay runtime console, annotated: call experience, authoritative transcript, route and workflow, verified ToolResult, durable incident state, event timeline and per-turn measurements](docs/assets/relay-console/05-annotated.png)
 
-<sub>Regenerated from a recorded live connection (server events + durable trace) after a
-session-clock fix, so the disconnected console shows 00:00; the original live capture is
-[05-original.png](docs/assets/relay-console/05-original.png).</sub>
+<sub>Relay runtime console — realtime voice state, routing, workflow execution, verified tool results
+and durable incident state.</sub>
 
 The console is a window into the runtime, not a chat skin. The left side is the caller's
 experience: realtime voice state, the waveform, and an authoritative transcript in which only
@@ -102,11 +101,6 @@ flowchart TB
 
 ## What Happens During a Voice Turn
 
-The screenshots below are live captures from one console session, except the step 1 entry-point
-image (regenerated idle state after a session-clock fix; original:
-[01-original.png](docs/assets/relay-console/01-original.png)) and step 5 (a labelled replay of
-recorded Gate B evidence).
-
 ### 1. Voice input and guarded admission
 
 ![Call experience entry point, annotated](docs/assets/relay-console/01-annotated.png)
@@ -170,6 +164,8 @@ reconciled, never blindly retried. Local atomicity is not distributed exactly-on
 
 ![Barge-in detail: voice output USER_INTERRUPTED next to business result COMMITTED](docs/assets/relay-console/barge-in-detail.png)
 
+<sub>Gate B replay</sub>
+
 ```text
 agent speaking → caller speech detected (≤ 1 request per provider turn) → presentation interrupted
   → queued audio discarded → native LiveKit queue cleared → in-flight capture allowed to settle
@@ -186,8 +182,10 @@ and the interrupting hazard updates **that same incident** to revision 2.
 
 ![Transaction-safe barge-in, annotated: presentation cancelled is not business transaction cancelled](docs/assets/relay-console/replay-gate-b-bargein-annotated.png)
 
-<sub>Deterministic replay of the recorded Gate B session (server events + durable state), rendered
-in the console; it is not a live screen capture.</sub>
+<sub>Recorded Gate B session replay</sub>
+
+**Result:** voice output `USER_INTERRUPTED` · business result `COMMITTED` · same incident updated
+revision 1 → 2 · attempts 1 · replays 0 · no rollback · no duplicate incident.
 
 Validated with a real microphone (Gate B, [evidence](docs/verification/phase-10-verification.md)):
 
@@ -239,7 +237,7 @@ Measured in single live runs (not benchmarks): Relay took about 2–10 ms from t
 speech signal to the interrupt request, while AssemblyAI reported speech about 1.4–1.5 s after
 onset; interrupt request to `USER_INTERRUPTED` took 9–17 ms; warm first TTS audio ≈ 240–253 ms.
 
-Honest record: the first real-microphone barge-in attempt failed (late cutoff; the provider kept
+Caveats: the first real-microphone barge-in attempt failed (late cutoff; the provider kept
 only the last word of the interruption) and led to the speech-start instrumentation used for the
 successful validation. Live coalescing of two provider finals into one turn has not been observed
 (covered by deterministic tests). Full evidence: [Phase 10](docs/verification/phase-10-verification.md) ·
